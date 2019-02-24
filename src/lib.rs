@@ -41,10 +41,10 @@ pub fn check_protoc_version() {
 /// Use protobuf-rs to generate Rust files from proto files (`file_names`).
 ///
 /// Uses `["proto", "include"]` as the include lists.
-pub fn generate_protobuf_files(file_names: Vec<&str>, out_dir: &str) {
+pub fn generate_protobuf_files(file_names: &[&str], out_dir: &str) {
     protoc_rust::run(protoc_rust::Args {
         out_dir,
-        input: &file_names,
+        input: file_names,
         includes: &["proto", "include"],
         customize: protoc_rust::Customize {
             ..Default::default()
@@ -78,7 +78,7 @@ pub fn module_names_for_dir(directory_name: &str) -> Vec<String> {
 
 /// Convert protobuf files to use the old way of reading protobuf enums.
 // FIXME: Remove this once stepancheg/rust-protobuf#233 is resolved.
-pub fn replace_read_unknown_fields(file_names: &[String]) {
+pub fn replace_read_unknown_fields(file_names: &[&str]) {
     let regex =
         Regex::new(r"::protobuf::rt::read_proto3_enum_with_unknown_fields_into\(([^,]+), ([^,]+), &mut ([^,]+), [^\)]+\)\?").unwrap();
     for file_name in file_names {
