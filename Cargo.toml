@@ -1,0 +1,11 @@
+[package]
+name = "kvproto-build"
+version = "0.1.0"
+authors = ["Nick Cameron <nrc@ncameron.org>"]
+edition = "2018"
+
+[dependencies]
+protoc-rust = "2.0"
+protoc-grpcio = "0.3.1"
+regex = "1.1"
+prost-build = { version = "0.4" }
