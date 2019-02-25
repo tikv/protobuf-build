@@ -7,5 +7,5 @@ edition = "2018"
 [dependencies]
 protoc-rust = "2.0"
 protoc-grpcio = "0.3.1"
+grpcio-compiler = { path = "../grpc-rs/compiler" }
 regex = "1.1"
-prost-build = { version = "0.4" }

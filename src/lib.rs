@@ -12,11 +12,15 @@
 // limitations under the License.
 
 //! Utility functions for generating Rust code from protobuf specifications.
+//!
+//! These functions panic liberally, they are designed to be used from build
+//! scripts, not in production.
 
 use regex::Regex;
 use std::fs::read_dir;
 use std::fs::File;
 use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::process::Command;
 use std::str::from_utf8;
 
@@ -53,6 +57,32 @@ pub fn generate_protobuf_files(file_names: &[&str], out_dir: &str) {
     .unwrap();
 
     protoc_grpcio::compile_grpc_protos(file_names, &["proto", "include"], out_dir).unwrap();
+}
+
+/// Use Prost to generate Rust files from proto files (`file_names`).
+///
+/// Uses `["proto", "include"]` as the include lists.
+///
+/// Returns a list of the package names of the protocols that were compiled.
+pub fn generate_prost_files(file_names: &[String], out_dir: &str) -> Vec<String> {
+    let packages = grpcio_compiler::prost_codegen::compile_protos(
+        &file_names,
+        &["proto".to_owned(), "include".to_owned()],
+        out_dir,
+    )
+    .unwrap();
+    for package in &packages {
+        let mut file_name = PathBuf::new();
+        file_name.push(out_dir);
+        file_name.push(&format!("{}.rs", package));
+        let output = Command::new("rustfmt")
+            .arg(file_name.to_str().unwrap())
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+    }
+
+    packages
 }
 
 /// Returns a list of module names corresponding to the Rust files in a directory.
