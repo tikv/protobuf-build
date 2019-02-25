@@ -106,18 +106,3 @@ pub fn replace_read_unknown_fields(file_names: &[&str]) {
             .expect("Could not write source file");
     }
 }
-
-/// Generate module declarations for `mod_names` and write it to `output_file_name`.
-pub fn generate_protobuf_rs(mod_names: &[String], output_file_name: &str) {
-    let mut text = String::new();
-    for mod_name in mod_names {
-        text.push_str("pub mod ");
-        text.push_str(mod_name);
-        text.push_str(";\n");
-    }
-
-    let mut lib =
-        File::create(output_file_name).expect(&format!("Could not create {}", output_file_name));
-    lib.write_all(text.as_bytes())
-        .expect(&format!("Could not write {}", output_file_name));
-}
