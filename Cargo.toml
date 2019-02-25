@@ -1,5 +1,5 @@
 [package]
-name = "kvproto-build"
+name = "protobuf-build"
 version = "0.1.0"
 authors = ["Nick Cameron <nrc@ncameron.org>"]
 edition = "2018"
