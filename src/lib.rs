@@ -20,9 +20,11 @@ use regex::Regex;
 use std::fs::read_dir;
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str::from_utf8;
+
+mod wrapper;
 
 /// Check that the user's installed version of the protobuf compiler is 3.1.x.
 pub fn check_protoc_version() {
@@ -75,14 +77,25 @@ pub fn generate_prost_files(file_names: &[String], out_dir: &str) -> Vec<String>
         let mut file_name = PathBuf::new();
         file_name.push(out_dir);
         file_name.push(&format!("{}.rs", package));
-        let output = Command::new("rustfmt")
-            .arg(file_name.to_str().unwrap())
-            .output()
-            .unwrap();
-        assert!(output.status.success());
+        rustfmt(&file_name);
     }
 
     packages
+}
+
+fn rustfmt(file_path: &Path) {
+    let output = Command::new("rustfmt")
+        .arg(file_path.to_str().unwrap())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+}
+
+pub fn generate_wrappers(file_names: &[String], out_dir: &str) {
+    for file in file_names {
+        let gen = wrapper::WrapperGen::new(file);
+        gen.write(out_dir);
+    }
 }
 
 /// Returns a list of module names corresponding to the Rust files in a directory.
@@ -98,6 +111,7 @@ pub fn module_names_for_dir(directory_name: &str) -> Vec<String> {
                 .to_string_lossy()
                 .split(".rs")
                 .next()
+                .filter(|n| !n.starts_with("wrapper_"))
                 .map(|n| n.to_owned())
         })
         .collect();
