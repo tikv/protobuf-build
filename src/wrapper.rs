@@ -69,7 +69,7 @@ fn generate_one<W>(item: &ItemStruct, prefix: &str, buf: &mut W) -> Result<(), i
 where
     W: Write,
 {
-    write!(buf, "impl {}{} {{", prefix, item.ident)?;
+    writeln!(buf, "impl {}{} {{", prefix, item.ident)?;
     generate_new(&item.ident, prefix, buf)?;
     item.fields
         .iter()
@@ -82,25 +82,75 @@ where
         .map(|m| m.write_methods(buf))
         .collect::<Result<Vec<_>, _>>()?;
     writeln!(buf, "}}")?;
-    Ok(())
+    generate_message_trait(&item.ident, prefix, buf)
 }
 
 fn generate_new<W>(name: &Ident, prefix: &str, buf: &mut W) -> Result<(), io::Error>
 where
     W: Write,
 {
-    // TODO use a trait rather than a trailing underscore?
     writeln!(
         buf,
         "pub fn new_() -> {}{} {{ ::std::default::Default::default() }}",
         prefix, name,
-    )?;
-    // TODO part of Message trait
+    )
+}
+
+fn generate_message_trait<W>(name: &Ident, prefix: &str, buf: &mut W) -> Result<(), io::Error>
+where
+    W: Write,
+{
+    write!(buf, "impl ::protobuf::Clear for {}{} {{", prefix, name)?;
     writeln!(
         buf,
-        "pub fn default_instance() -> &'static {}{} {{ unimplemented!(); }}",
+        "fn clear(&mut self) {{ ::prost::Message::clear(self); }}",
+    )?;
+    writeln!(buf, "}}")?;
+
+    write!(buf, "impl ::protobuf::Message for {}{} {{", prefix, name)?;
+    writeln!(
+        buf,
+        "fn compute_size(&self) -> u32 {{ ::prost::Message::encoded_len(self) as u32 }}",
+    )?;
+    writeln!(
+        buf,
+        "fn get_cached_size(&self) -> u32 {{ ::prost::Message::encoded_len(self) as u32 }}",
+    )?;
+    writeln!(
+        buf,
+        "fn as_any(&self) -> &::std::any::Any {{ self as &::std::any::Any }}",
+    )?;
+    writeln!(
+        buf,
+        "fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {{ Self::descriptor_static() }}",
+    )?;
+    writeln!(buf, "fn new() -> Self {{ Self::new_() }}",)?;
+    writeln!(
+        buf,
+        "fn write_to_with_cached_sizes(&self, _os: &mut ::protobuf::CodedOutputStream) -> ::protobuf::ProtobufResult<()> {{ unimplemented!(); }}",
+    )?;
+    writeln!(
+        buf,
+        "fn default_instance() -> &'static {}{} {{ unimplemented!(); }}",
         prefix, name,
-    )
+    )?;
+    writeln!(
+        buf,
+        "fn is_initialized(&self) -> bool {{ unimplemented!(); }}",
+    )?;
+    writeln!(
+        buf,
+        "fn merge_from(&mut self, _is: &mut ::protobuf::CodedInputStream) -> ::protobuf::ProtobufResult<()> {{ unimplemented!(); }}",
+    )?;
+    writeln!(
+        buf,
+        "fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {{ unimplemented!(); }}",
+    )?;
+    writeln!(
+        buf,
+        "fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {{ unimplemented!(); }}",
+    )?;
+    writeln!(buf, "}}")
 }
 
 const INT_TYPES: [&str; 4] = ["int32", "int64", "uint32", "uint64"];
@@ -195,7 +245,7 @@ impl FieldKind {
                 result.clear = Some("::std::option::Option::None".to_owned());
                 result.set = Some("::std::option::Option::Some(v);".to_owned());
                 result.get = Some(format!(
-                    "self.{}.as_ref().unwrap_or_else(|| {1}::default_instance())",
+                    "self.{}.as_ref().unwrap_or_else(|| <{1} as ::protobuf::Message>::default_instance())",
                     result.name, unwrapped_type
                 ));
                 result.mt = MethodKind::Custom(format!(
