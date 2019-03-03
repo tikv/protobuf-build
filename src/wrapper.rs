@@ -160,12 +160,13 @@ enum FieldKind {
     Optional,
     Repeated,
     Int,
+    Float,
     Bool,
     Bytes,
     String,
     OneOf(String),
     Enumeration(String),
-    // Float and Fixed are not handled.
+    // Fixed are not handled.
 }
 
 impl FieldKind {
@@ -188,6 +189,8 @@ impl FieldKind {
                                     Some(FieldKind::String)
                                 } else if id == "bool" {
                                     Some(FieldKind::Bool)
+                                } else if id == "float" || id == "double" {
+                                    Some(FieldKind::Float)
                                 } else if INT_TYPES.contains(&&*id.to_string()) {
                                     Some(FieldKind::Int)
                                 } else {
@@ -264,6 +267,10 @@ impl FieldKind {
                 result.ref_ty = RefType::Copy;
                 result.clear = Some("0".to_owned());
             }
+            FieldKind::Float => {
+                result.ref_ty = RefType::Copy;
+                result.clear = Some("0.".to_owned());
+            }
             FieldKind::Bool => {
                 result.ref_ty = RefType::Copy;
                 result.clear = Some("false".to_owned());
@@ -299,6 +306,7 @@ impl FieldKind {
                     "unsafe {{ ::std::mem::transmute::<{}, i32>(v) }}",
                     enum_type
                 ));
+                result.enum_set = true;
                 result.get = Some(format!(
                     "unsafe {{ ::std::mem::transmute::<i32, {}>(self.{}) }}",
                     enum_type, result.name
@@ -326,6 +334,7 @@ struct FieldMethods {
     // None = set to `v`
     // Some = expression to set.
     set: Option<String>,
+    enum_set: bool,
     // Some = custom getter expression.
     get: Option<String>,
     mt: MethodKind,
@@ -347,6 +356,7 @@ impl FieldMethods {
             has: false,
             clear: None,
             set: None,
+            enum_set: false,
             get: None,
             mt: MethodKind::None,
             take: None,
@@ -391,8 +401,8 @@ impl FieldMethods {
         match &self.set {
             Some(s) => writeln!(
                 buf,
-                "pub fn set_{}(&mut self, v: {}) {{ self.{} = {}; }}",
-                self.unesc_name, ty, self.name, s
+                "pub fn set_{}{}(&mut self, v: {}) {{ self.{} = {}; }}",
+                self.unesc_name, if self.enum_set {"_"} else {""}, ty, self.name, s
             )?,
             None => writeln!(
                 buf,
