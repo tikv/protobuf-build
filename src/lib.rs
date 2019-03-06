@@ -107,8 +107,11 @@ pub fn module_names_for_dir(directory_name: &str) -> Vec<String> {
         .expect("Couldn't read directory")
         .filter_map(|e| {
             let file_name = e.expect("Couldn't list file").file_name();
+            let file_name = file_name.to_string_lossy();
+            if !file_name.ends_with(".rs") {
+                return None;
+            }
             file_name
-                .to_string_lossy()
                 .split(".rs")
                 .next()
                 .filter(|n| !n.starts_with("wrapper_"))
