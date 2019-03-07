@@ -157,8 +157,9 @@ const INT_TYPES: [&str; 4] = ["int32", "int64", "uint32", "uint64"];
 
 #[derive(Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
 enum FieldKind {
-    Optional,
+    Optional(Box<FieldKind>),
     Repeated,
+    Message,
     Int,
     Float,
     Bool,
@@ -180,7 +181,9 @@ impl FieldKind {
                         .filter_map(|item| {
                             if let NestedMeta::Meta(Meta::Word(id)) = item {
                                 if id == "optional" {
-                                    Some(FieldKind::Optional)
+                                    Some(FieldKind::Optional(Box::new(FieldKind::Message)))
+                                } else if id == "message" {
+                                    Some(FieldKind::Message)
                                 } else if id == "repeated" {
                                     Some(FieldKind::Repeated)
                                 } else if id == "bytes" {
@@ -214,7 +217,13 @@ impl FieldKind {
                         .collect::<Vec<_>>();
                     kinds.sort();
                     if !kinds.is_empty() {
-                        return kinds.into_iter().next().unwrap();
+                        let mut iter = kinds.into_iter();
+                        let mut result = iter.next().unwrap();
+                        // If the type is an optional, keep looking to find the underlying type.
+                        if let FieldKind::Optional(_) = result {
+                            result = FieldKind::Optional(Box::new(iter.next().unwrap()));
+                        }
+                        return result;
                     }
                 }
             }
@@ -225,16 +234,14 @@ impl FieldKind {
     fn methods(&self, ty: &Type, ident: &Ident) -> Option<FieldMethods> {
         let mut result = FieldMethods::new(ty, ident);
         match self {
-            FieldKind::Optional => {
+            FieldKind::Optional(fk) => {
                 let unwrapped_type = match ty {
                     Type::Path(p) => {
                         let seg = p.path.segments.iter().last().unwrap();
                         assert!(seg.ident == "Option");
                         match &seg.arguments {
                             PathArguments::AngleBracketed(args) => match &args.args[0] {
-                                GenericArgument::Type(ty) => {
-                                    ty.clone().into_token_stream().to_string()
-                                }
+                                GenericArgument::Type(ty) => ty.clone(),
                                 _ => unreachable!(),
                             },
                             _ => unreachable!(),
@@ -242,27 +249,69 @@ impl FieldKind {
                     }
                     _ => unreachable!(),
                 };
+                let nested_methods = fk.methods(&unwrapped_type, ident).unwrap();
+                let unwrapped_type = unwrapped_type.into_token_stream().to_string();
 
                 result.override_ty = Some(unwrapped_type.clone());
+                result.ref_ty = nested_methods.ref_ty;
                 result.has = true;
                 result.clear = Some("::std::option::Option::None".to_owned());
                 result.set = Some("::std::option::Option::Some(v);".to_owned());
+
+                let as_ref = match &result.ref_ty {
+                    RefType::Ref | RefType::Deref(_) => {
+                        result.mt = MethodKind::Custom(format!(
+                            "if self.{}.is_none() {{
+                                self.{0} = ::std::option::Option::Some({1}::default());
+                            }}
+                            self.{0}.as_mut().unwrap()",
+                            result.name, unwrapped_type,
+                        ));
+                        ".as_ref()"
+                    }
+                    RefType::Copy => "",
+                };
+
+                let init_val = match &**fk {
+                    FieldKind::Message => {
+                        result.take = Some(format!(
+                            "self.{}.take().unwrap_or_else(|| {}::default())",
+                            result.name, unwrapped_type,
+                        ));
+                        format!(
+                            "<{} as ::protobuf::Message>::default_instance()",
+                            unwrapped_type
+                        )
+                    }
+                    FieldKind::Bytes => {
+                        result.take = Some(format!(
+                            "self.{}.take().unwrap_or_else(|| ::std::vec::Vec::new())",
+                            result.name,
+                        ));
+                        "&[]".to_owned()
+                    }
+                    FieldKind::String => {
+                        result.take = Some(format!(
+                            "self.{}.take().unwrap_or_else(|| ::std::string::String::new())",
+                            result.name,
+                        ));
+                        "\"\"".to_owned()
+                    }
+                    FieldKind::Int | FieldKind::Enumeration(_) => "0".to_owned(),
+                    FieldKind::Float => "0.".to_owned(),
+                    FieldKind::Bool => "false".to_owned(),
+                    _ => unimplemented!(),
+                };
+
                 result.get = Some(format!(
-                    "self.{}.as_ref().unwrap_or_else(|| <{1} as ::protobuf::Message>::default_instance())",
-                    result.name, unwrapped_type
-                ));
-                result.mt = MethodKind::Custom(format!(
-                    "if self.{}.is_none() {{
-                        self.{0} = ::std::option::Option::Some({1}::default());
-                    }}
-                    self.{0}.as_mut().unwrap()",
-                    result.name, unwrapped_type
-                ));
-                result.take = Some(format!(
-                    "self.{}.take().unwrap_or_else(|| {}::default())",
-                    result.name, unwrapped_type
+                    "match self.{}{} {{
+                        Some(v) => v,
+                        None => {},
+                    }}",
+                    result.name, as_ref, init_val,
                 ));
             }
+            FieldKind::Message => {}
             FieldKind::Int => {
                 result.ref_ty = RefType::Copy;
                 result.clear = Some("0".to_owned());
@@ -402,7 +451,11 @@ impl FieldMethods {
             Some(s) => writeln!(
                 buf,
                 "pub fn set_{}{}(&mut self, v: {}) {{ self.{} = {}; }}",
-                self.unesc_name, if self.enum_set {"_"} else {""}, ty, self.name, s
+                self.unesc_name,
+                if self.enum_set { "_" } else { "" },
+                ty,
+                self.name,
+                s
             )?,
             None => writeln!(
                 buf,
