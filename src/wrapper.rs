@@ -252,11 +252,17 @@ impl FieldKind {
                 let nested_methods = fk.methods(&unwrapped_type, ident).unwrap();
                 let unwrapped_type = unwrapped_type.into_token_stream().to_string();
 
-                result.override_ty = Some(unwrapped_type.clone());
+                result.override_ty = Some(match nested_methods.override_ty {
+                    Some(t) => t,
+                    None => unwrapped_type.clone(),
+                });
                 result.ref_ty = nested_methods.ref_ty;
                 result.has = true;
                 result.clear = Some("::std::option::Option::None".to_owned());
-                result.set = Some("::std::option::Option::Some(v);".to_owned());
+                result.set = Some(match &**fk {
+                    FieldKind::Enumeration(t) => format!("::std::option::Option::Some(unsafe {{ ::std::mem::transmute::<{}, i32>(v) }})", t),
+                    _ => "::std::option::Option::Some(v);".to_owned(),
+                });
 
                 let as_ref = match &result.ref_ty {
                     RefType::Ref | RefType::Deref(_) => {
@@ -303,13 +309,22 @@ impl FieldKind {
                     _ => unimplemented!(),
                 };
 
-                result.get = Some(format!(
-                    "match self.{}{} {{
-                        Some(v) => v,
-                        None => {},
-                    }}",
-                    result.name, as_ref, init_val,
-                ));
+                result.get = Some(match &**fk {
+                    FieldKind::Enumeration(t) => format!(
+                        "unsafe {{ ::std::mem::transmute::<i32, {}>(match self.{} {{
+                            Some(v) => v,
+                            None => 0,
+                        }}) }}",
+                        t, result.name,
+                    ),
+                    _ => format!(
+                        "match self.{}{} {{
+                            Some(v) => v,
+                            None => {},
+                        }}",
+                        result.name, as_ref, init_val,
+                    ),
+                });
             }
             FieldKind::Message => {}
             FieldKind::Int => {
@@ -394,7 +409,7 @@ impl FieldMethods {
     fn new(ty: &Type, ident: &Ident) -> FieldMethods {
         let mut unesc_name = ident.to_string();
         if unesc_name.starts_with("r#") {
-            unesc_name = unesc_name[2..].to_owned();
+            unesc_name = format!("field_{}", &unesc_name[2..]);
         }
         FieldMethods {
             ty: ty.clone().into_token_stream().to_string(),
