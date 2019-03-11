@@ -9,7 +9,7 @@ description = "Utility functions for generating Rust code from protobufs (using 
 [dependencies]
 protoc-rust = "2.0"
 protoc-grpcio = "0.3.1"
-grpcio-compiler = { path = "../grpc-rs/compiler" }
+grpcio-compiler = { git = "https://github.com/nrc/grpc-rs-squashed.git" }
 regex = "1.1"
 syn = { version = "0.15", features = ["full"] }
 quote = "0.6"
