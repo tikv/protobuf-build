@@ -545,7 +545,7 @@ fn is_message(attrs: &[Attribute]) -> bool {
     for a in attrs {
         if a.path.is_ident("derive") {
             let tts = a.tts.to_string();
-            if tts.contains(":: prost_derive :: Message") {
+            if tts.contains(":: Message") {
                 return true;
             }
         }
