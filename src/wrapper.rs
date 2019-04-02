@@ -14,9 +14,10 @@ pub struct WrapperGen {
 
 impl WrapperGen {
     pub fn new(file_name: &str) -> WrapperGen {
-        let input =
-            String::from_utf8(fs::read(file_name).expect(&format!("Could not read {}", file_name)))
-                .unwrap();
+        let input = String::from_utf8(
+            fs::read(file_name).unwrap_or_else(|_| panic!("Could not read {}", file_name)),
+        )
+        .expect("File not utf8");
         WrapperGen {
             input,
             name: format!(
@@ -257,15 +258,20 @@ impl FieldKind {
                     None => unwrapped_type.clone(),
                 });
                 result.ref_ty = nested_methods.ref_ty;
+                result.enum_set = nested_methods.enum_set;
                 result.has = true;
                 result.clear = Some("::std::option::Option::None".to_owned());
                 result.set = Some(match &**fk {
                     FieldKind::Enumeration(t) => format!("::std::option::Option::Some(unsafe {{ ::std::mem::transmute::<{}, i32>(v) }})", t),
-                    _ => "::std::option::Option::Some(v);".to_owned(),
+                    _ => "::std::option::Option::Some(v)".to_owned(),
                 });
 
                 let as_ref = match &result.ref_ty {
                     RefType::Ref | RefType::Deref(_) => {
+                        let unwrapped_type = match &**fk {
+                            FieldKind::Bytes | FieldKind::Repeated => "::std::vec::Vec",
+                            _ => &unwrapped_type,
+                        };
                         result.mt = MethodKind::Custom(format!(
                             "if self.{}.is_none() {{
                                 self.{0} = ::std::option::Option::Some({1}::default());
@@ -281,24 +287,24 @@ impl FieldKind {
                 let init_val = match &**fk {
                     FieldKind::Message => {
                         result.take = Some(format!(
-                            "self.{}.take().unwrap_or_else(|| {}::default())",
+                            "self.{}.take().unwrap_or_else({}::default)",
                             result.name, unwrapped_type,
                         ));
                         format!(
                             "<{} as ::protobuf::Message>::default_instance()",
-                            unwrapped_type
+                            unwrapped_type,
                         )
                     }
                     FieldKind::Bytes => {
                         result.take = Some(format!(
-                            "self.{}.take().unwrap_or_else(|| ::std::vec::Vec::new())",
+                            "self.{}.take().unwrap_or_else(::std::vec::Vec::new)",
                             result.name,
                         ));
                         "&[]".to_owned()
                     }
                     FieldKind::String => {
                         result.take = Some(format!(
-                            "self.{}.take().unwrap_or_else(|| ::std::string::String::new())",
+                            "self.{}.take().unwrap_or_else(::std::string::String::new)",
                             result.name,
                         ));
                         "\"\"".to_owned()
@@ -467,6 +473,7 @@ impl FieldMethods {
                 buf,
                 "pub fn set_{}{}(&mut self, v: {}) {{ self.{} = {}; }}",
                 self.unesc_name,
+                // enums already have a different `set` method defined.
                 if self.enum_set { "_" } else { "" },
                 ty,
                 self.name,

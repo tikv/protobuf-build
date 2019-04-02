@@ -47,7 +47,8 @@ pub fn check_protoc_version() {
 /// Use protobuf-rs to generate Rust files from proto files (`file_names`).
 ///
 /// Uses `["proto", "include"]` as the include lists.
-pub fn generate_protobuf_files(file_names: &[&str], out_dir: &str) {
+pub fn generate_protobuf_files<T: AsRef<str>>(file_names: &[T], out_dir: &str) {
+    let file_names = &file_names.iter().map(AsRef::as_ref).collect::<Vec<_>>();
     protoc_rust::run(protoc_rust::Args {
         out_dir,
         input: file_names,
@@ -66,10 +67,10 @@ pub fn generate_protobuf_files(file_names: &[&str], out_dir: &str) {
 /// Uses `["proto", "include"]` as the include lists.
 ///
 /// Returns a list of the package names of the protocols that were compiled.
-pub fn generate_prost_files(file_names: &[String], out_dir: &str) -> Vec<String> {
+pub fn generate_prost_files<T: AsRef<str>>(file_names: &[T], out_dir: &str) -> Vec<String> {
     let packages = grpcio_compiler::prost_codegen::compile_protos(
-        &file_names,
-        &["proto".to_owned(), "include".to_owned()],
+        &file_names.iter().map(AsRef::as_ref).collect::<Vec<_>>(),
+        &["proto", "include"],
         out_dir,
     )
     .unwrap();
@@ -86,14 +87,15 @@ pub fn generate_prost_files(file_names: &[String], out_dir: &str) -> Vec<String>
 fn rustfmt(file_path: &Path) {
     let output = Command::new("rustfmt")
         .arg(file_path.to_str().unwrap())
-        .output()
-        .unwrap();
-    assert!(output.status.success());
+        .output();
+    if !output.map(|o| o.status.success()).unwrap_or(false) {
+        eprintln!("Rustfmt failed");
+    }
 }
 
-pub fn generate_wrappers(file_names: &[String], out_dir: &str) {
+pub fn generate_wrappers<T: AsRef<str>>(file_names: &[T], out_dir: &str) {
     for file in file_names {
-        let gen = wrapper::WrapperGen::new(file);
+        let gen = wrapper::WrapperGen::new(file.as_ref());
         gen.write(out_dir);
     }
 }
@@ -115,7 +117,7 @@ pub fn module_names_for_dir(directory_name: &str) -> Vec<String> {
                 .split(".rs")
                 .next()
                 .filter(|n| !n.starts_with("wrapper_"))
-                .map(|n| n.to_owned())
+                .map(ToOwned::to_owned)
         })
         .collect();
 
@@ -125,13 +127,13 @@ pub fn module_names_for_dir(directory_name: &str) -> Vec<String> {
 
 /// Convert protobuf files to use the old way of reading protobuf enums.
 // FIXME: Remove this once stepancheg/rust-protobuf#233 is resolved.
-pub fn replace_read_unknown_fields(file_names: &[&str]) {
+pub fn replace_read_unknown_fields<T: AsRef<str>>(file_names: &[T]) {
     let regex =
         Regex::new(r"::protobuf::rt::read_proto3_enum_with_unknown_fields_into\(([^,]+), ([^,]+), &mut ([^,]+), [^\)]+\)\?").unwrap();
     for file_name in file_names {
         let mut text = String::new();
         {
-            let mut f = File::open(file_name).unwrap();
+            let mut f = File::open(file_name.as_ref()).unwrap();
             f.read_to_string(&mut text)
                 .expect("Couldn't read source file");
         }
@@ -148,7 +150,7 @@ pub fn replace_read_unknown_fields(file_names: &[&str]) {
                  }",
             )
         };
-        let mut out = File::create(file_name).unwrap();
+        let mut out = File::create(file_name.as_ref()).unwrap();
         out.write_all(text.as_bytes())
             .expect("Could not write source file");
     }
