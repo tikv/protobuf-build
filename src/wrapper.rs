@@ -4,7 +4,8 @@ use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
 use std::path::PathBuf;
 use syn::{
-    Attribute, GenericArgument, Ident, Item, ItemStruct, Meta, NestedMeta, PathArguments, Type,
+    Attribute, GenericArgument, Ident, Item, ItemEnum, ItemStruct, Meta, NestedMeta, PathArguments,
+    Type,
 };
 
 pub struct WrapperGen {
@@ -54,7 +55,11 @@ where
     for item in items {
         if let Item::Struct(item) = item {
             if is_message(&item.attrs) {
-                generate_one(item, prefix, buf)?;
+                generate_struct(item, prefix, buf)?;
+            }
+        } else if let Item::Enum(item) = item {
+            if is_enum(&item.attrs) {
+                generate_enum(item, prefix, buf)?;
             }
         } else if let Item::Mod(m) = item {
             if let Some(ref content) = m.content {
@@ -66,7 +71,7 @@ where
     Ok(())
 }
 
-fn generate_one<W>(item: &ItemStruct, prefix: &str, buf: &mut W) -> Result<(), io::Error>
+fn generate_struct<W>(item: &ItemStruct, prefix: &str, buf: &mut W) -> Result<(), io::Error>
 where
     W: Write,
 {
@@ -84,6 +89,24 @@ where
         .collect::<Result<Vec<_>, _>>()?;
     writeln!(buf, "}}")?;
     generate_message_trait(&item.ident, prefix, buf)
+}
+
+fn generate_enum<W>(item: &ItemEnum, prefix: &str, buf: &mut W) -> Result<(), io::Error>
+where
+    W: Write,
+{
+    writeln!(buf, "impl {}{} {{", prefix, item.ident)?;
+    writeln!(buf, "pub fn values() -> &'static [Self] {{")?;
+    writeln!(
+        buf,
+        "static VALUES: &'static [{}{}] = &[",
+        prefix, item.ident
+    )?;
+    for v in &item.variants {
+        writeln!(buf, "{}{}::{},", prefix, item.ident, v.ident)?;
+    }
+    writeln!(buf, "];\nVALUES\n}}")?;
+    writeln!(buf, "}}")
 }
 
 fn generate_new<W>(name: &Ident, prefix: &str, buf: &mut W) -> Result<(), io::Error>
@@ -135,10 +158,10 @@ where
         "fn default_instance() -> &'static {}{} {{ unimplemented!(); }}",
         prefix, name,
     )?;
-    writeln!(
-        buf,
-        "fn is_initialized(&self) -> bool {{ unimplemented!(); }}",
-    )?;
+    // The only way for this to be false is if there are `required` fields, but
+    // afaict, we never use that feature. In any case rust-protobuf plans to
+    // always return `true` in 3.0.
+    writeln!(buf, "fn is_initialized(&self) -> bool {{ true }}",)?;
     writeln!(
         buf,
         "fn merge_from(&mut self, _is: &mut ::protobuf::CodedInputStream) -> ::protobuf::ProtobufResult<()> {{ unimplemented!(); }}",
@@ -553,6 +576,18 @@ fn is_message(attrs: &[Attribute]) -> bool {
         if a.path.is_ident("derive") {
             let tts = a.tts.to_string();
             if tts.contains(":: Message") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn is_enum(attrs: &[Attribute]) -> bool {
+    for a in attrs {
+        if a.path.is_ident("derive") {
+            let tts = a.tts.to_string();
+            if tts.contains("Enumeration") {
                 return true;
             }
         }
