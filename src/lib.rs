@@ -59,7 +59,7 @@ pub fn generate_protobuf_files<T: AsRef<str>>(file_names: &[T], out_dir: &str) {
     })
     .unwrap();
 
-    protoc_grpcio::compile_grpc_protos(file_names, &["proto", "include"], out_dir).unwrap();
+    protoc_grpcio::compile_grpc_protos(file_names, &["proto", "include"], out_dir, None).unwrap();
 }
 
 /// Use Prost to generate Rust files from proto files (`file_names`).
