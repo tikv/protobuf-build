@@ -8,21 +8,27 @@ use syn::{
     Type,
 };
 
+#[derive(Eq, PartialEq, Clone, Copy)]
+pub enum GenOpt {
+    All,
+    NoImplMessage,
+}
+
 pub struct WrapperGen {
     input: String,
     name: String,
-    protobuf: bool,
+    gen_opt: GenOpt,
 }
 
 impl WrapperGen {
-    pub fn new(file_name: &str, protobuf: bool) -> WrapperGen {
+    pub fn new(file_name: &str, gen_opt: GenOpt) -> WrapperGen {
         let input = String::from_utf8(
             fs::read(file_name).unwrap_or_else(|_| panic!("Could not read {}", file_name)),
         )
         .expect("File not utf8");
         WrapperGen {
             input,
-            protobuf,
+            gen_opt,
             name: format!(
                 "wrapper_{}",
                 &file_name[file_name.rfind('/').map(|i| i + 1).unwrap_or(0)..]
@@ -46,13 +52,13 @@ impl WrapperGen {
         W: Write,
     {
         let file = ::syn::parse_file(&self.input).expect("Could not parse file");
-        generate_from_items(&file.items, self.protobuf.clone(), "", buf)
+        generate_from_items(&file.items, self.gen_opt, "", buf)
     }
 }
 
 fn generate_from_items<W>(
     items: &[Item],
-    protobuf: bool,
+    gen_opt: GenOpt,
     prefix: &str,
     buf: &mut W,
 ) -> Result<(), io::Error>
@@ -62,7 +68,7 @@ where
     for item in items {
         if let Item::Struct(item) = item {
             if is_message(&item.attrs) {
-                generate_struct(item, protobuf, prefix, buf)?;
+                generate_struct(item, gen_opt, prefix, buf)?;
             }
         } else if let Item::Enum(item) = item {
             if is_enum(&item.attrs) {
@@ -71,7 +77,7 @@ where
         } else if let Item::Mod(m) = item {
             if let Some(ref content) = m.content {
                 let prefix = format!("{}{}::", prefix, m.ident);
-                generate_from_items(&content.1, protobuf, &prefix, buf)?;
+                generate_from_items(&content.1, gen_opt, &prefix, buf)?;
             }
         }
     }
@@ -80,7 +86,7 @@ where
 
 fn generate_struct<W>(
     item: &ItemStruct,
-    protobuf: bool,
+    gen_opt: GenOpt,
     prefix: &str,
     buf: &mut W,
 ) -> Result<(), io::Error>
@@ -96,14 +102,11 @@ where
                 .as_ref()
                 .map(|i| (i, &f.ty, FieldKind::from_attrs(&f.attrs)))
         })
-        .filter_map(|(n, t, k)| k.methods(t, n, protobuf))
+        .filter_map(|(n, t, k)| k.methods(t, n))
         .map(|m| m.write_methods(buf))
         .collect::<Result<Vec<_>, _>>()?;
     writeln!(buf, "}}")?;
-    if protobuf {
-        generate_message_trait(&item.ident, prefix, buf)?;
-    }
-    Ok(())
+    generate_message_trait(&item.ident, prefix, buf, gen_opt)
 }
 
 fn generate_enum<W>(item: &ItemEnum, prefix: &str, buf: &mut W) -> Result<(), io::Error>
@@ -135,10 +138,21 @@ where
     )
 }
 
-fn generate_message_trait<W>(name: &Ident, prefix: &str, buf: &mut W) -> Result<(), io::Error>
+fn generate_message_trait<W>(
+    name: &Ident,
+    prefix: &str,
+    buf: &mut W,
+    gen_opt: GenOpt,
+) -> Result<(), io::Error>
 where
     W: Write,
 {
+    if gen_opt == GenOpt::NoImplMessage {
+        return writeln!(
+            buf,
+            "// impls for `::protobuf::*` stuffs are not generated."
+        );
+    }
     write!(buf, "impl ::protobuf::Clear for {}{} {{", prefix, name)?;
     writeln!(
         buf,
@@ -294,7 +308,7 @@ impl FieldKind {
         unreachable!("Unknown field kind");
     }
 
-    fn methods(&self, ty: &Type, ident: &Ident, protobuf: bool) -> Option<FieldMethods> {
+    fn methods(&self, ty: &Type, ident: &Ident) -> Option<FieldMethods> {
         let mut result = FieldMethods::new(ty, ident);
         match self {
             FieldKind::Optional(fk) => {
@@ -312,7 +326,7 @@ impl FieldKind {
                     }
                     _ => unreachable!(),
                 };
-                let nested_methods = fk.methods(&unwrapped_type, ident, protobuf).unwrap();
+                let nested_methods = fk.methods(&unwrapped_type, ident).unwrap();
                 let unwrapped_type = unwrapped_type.into_token_stream().to_string();
 
                 result.override_ty = Some(match nested_methods.override_ty {
@@ -352,14 +366,7 @@ impl FieldKind {
                             "self.{}.take().unwrap_or_else({}::default)",
                             result.name, unwrapped_type,
                         ));
-                        if protobuf {
-                            format!(
-                                "<{} as ::protobuf::Message>::default_instance()",
-                                unwrapped_type,
-                            )
-                        } else {
-                            format!("{}::new_()", unwrapped_type)
-                        }
+                        format!("{}::new_()", unwrapped_type)
                     }
                     FieldKind::Bytes => {
                         result.take = Some(format!(
