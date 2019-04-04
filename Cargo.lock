@@ -264,7 +264,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "protobuf-build"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "grpcio-compiler 0.5.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
  "protoc-grpcio 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",

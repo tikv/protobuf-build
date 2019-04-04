@@ -1,6 +1,6 @@
 [package]
 name = "protobuf-build"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Nick Cameron <nrc@ncameron.org>"]
 edition = "2018"
 license = "Apache-2.0"

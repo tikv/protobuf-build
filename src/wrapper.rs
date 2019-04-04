@@ -155,7 +155,12 @@ where
     )?;
     writeln!(
         buf,
-        "fn default_instance() -> &'static {}{} {{ unimplemented!(); }}",
+        "fn default_instance() -> &'static {}{} {{
+            ::lazy_static::lazy_static! {{
+                static ref INSTANCE: {0}{1} = {0}{1}::new_();
+            }}
+            &*INSTANCE
+        }}",
         prefix, name,
     )?;
     // The only way for this to be false is if there are `required` fields, but
@@ -173,6 +178,25 @@ where
     writeln!(
         buf,
         "fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {{ unimplemented!(); }}",
+    )?;
+    writeln!(
+        buf,
+        "fn write_to_bytes(&self) -> ::protobuf::ProtobufResult<Vec<u8>> {{
+            let mut buf = Vec::new();
+            if let Err(_) = ::prost::Message::encode(self, &mut buf) {{
+                return Err(::protobuf::ProtobufError::WireError(::protobuf::error::WireError::Other));
+            }}
+            Ok(buf)
+        }}"
+    )?;
+    writeln!(
+        buf,
+        "fn merge_from_bytes(&mut self, bytes: &[u8]) -> ::protobuf::ProtobufResult<()> {{
+            if let Err(_) = ::prost::Message::merge(self, bytes) {{
+                return Err(::protobuf::ProtobufError::WireError(::protobuf::error::WireError::Other));
+            }}
+            Ok(())
+        }}"
     )?;
     writeln!(buf, "}}")
 }
