@@ -93,9 +93,9 @@ fn rustfmt(file_path: &Path) {
     }
 }
 
-pub fn generate_wrappers<T: AsRef<str>>(file_names: &[T], out_dir: &str) {
+pub fn generate_wrappers<T: AsRef<str>>(file_names: &[T], out_dir: &str, protobuf: bool) {
     for file in file_names {
-        let gen = wrapper::WrapperGen::new(file.as_ref());
+        let gen = wrapper::WrapperGen::new(file.as_ref(), protobuf);
         gen.write(out_dir);
     }
 }

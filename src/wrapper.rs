@@ -11,16 +11,18 @@ use syn::{
 pub struct WrapperGen {
     input: String,
     name: String,
+    protobuf: bool,
 }
 
 impl WrapperGen {
-    pub fn new(file_name: &str) -> WrapperGen {
+    pub fn new(file_name: &str, protobuf: bool) -> WrapperGen {
         let input = String::from_utf8(
             fs::read(file_name).unwrap_or_else(|_| panic!("Could not read {}", file_name)),
         )
         .expect("File not utf8");
         WrapperGen {
             input,
+            protobuf,
             name: format!(
                 "wrapper_{}",
                 &file_name[file_name.rfind('/').map(|i| i + 1).unwrap_or(0)..]
@@ -44,18 +46,23 @@ impl WrapperGen {
         W: Write,
     {
         let file = ::syn::parse_file(&self.input).expect("Could not parse file");
-        generate_from_items(&file.items, "", buf)
+        generate_from_items(&file.items, self.protobuf.clone(), "", buf)
     }
 }
 
-fn generate_from_items<W>(items: &[Item], prefix: &str, buf: &mut W) -> Result<(), io::Error>
+fn generate_from_items<W>(
+    items: &[Item],
+    protobuf: bool,
+    prefix: &str,
+    buf: &mut W,
+) -> Result<(), io::Error>
 where
     W: Write,
 {
     for item in items {
         if let Item::Struct(item) = item {
             if is_message(&item.attrs) {
-                generate_struct(item, prefix, buf)?;
+                generate_struct(item, protobuf, prefix, buf)?;
             }
         } else if let Item::Enum(item) = item {
             if is_enum(&item.attrs) {
@@ -64,14 +71,19 @@ where
         } else if let Item::Mod(m) = item {
             if let Some(ref content) = m.content {
                 let prefix = format!("{}{}::", prefix, m.ident);
-                generate_from_items(&content.1, &prefix, buf)?;
+                generate_from_items(&content.1, protobuf, &prefix, buf)?;
             }
         }
     }
     Ok(())
 }
 
-fn generate_struct<W>(item: &ItemStruct, prefix: &str, buf: &mut W) -> Result<(), io::Error>
+fn generate_struct<W>(
+    item: &ItemStruct,
+    protobuf: bool,
+    prefix: &str,
+    buf: &mut W,
+) -> Result<(), io::Error>
 where
     W: Write,
 {
@@ -84,11 +96,14 @@ where
                 .as_ref()
                 .map(|i| (i, &f.ty, FieldKind::from_attrs(&f.attrs)))
         })
-        .filter_map(|(n, t, k)| k.methods(t, n))
+        .filter_map(|(n, t, k)| k.methods(t, n, protobuf))
         .map(|m| m.write_methods(buf))
         .collect::<Result<Vec<_>, _>>()?;
     writeln!(buf, "}}")?;
-    generate_message_trait(&item.ident, prefix, buf)
+    if protobuf {
+        generate_message_trait(&item.ident, prefix, buf)?;
+    }
+    Ok(())
 }
 
 fn generate_enum<W>(item: &ItemEnum, prefix: &str, buf: &mut W) -> Result<(), io::Error>
@@ -279,14 +294,14 @@ impl FieldKind {
         unreachable!("Unknown field kind");
     }
 
-    fn methods(&self, ty: &Type, ident: &Ident) -> Option<FieldMethods> {
+    fn methods(&self, ty: &Type, ident: &Ident, protobuf: bool) -> Option<FieldMethods> {
         let mut result = FieldMethods::new(ty, ident);
         match self {
             FieldKind::Optional(fk) => {
                 let unwrapped_type = match ty {
                     Type::Path(p) => {
                         let seg = p.path.segments.iter().last().unwrap();
-                        assert!(seg.ident == "Option");
+                        assert_eq!(seg.ident, "Option");
                         match &seg.arguments {
                             PathArguments::AngleBracketed(args) => match &args.args[0] {
                                 GenericArgument::Type(ty) => ty.clone(),
@@ -297,7 +312,7 @@ impl FieldKind {
                     }
                     _ => unreachable!(),
                 };
-                let nested_methods = fk.methods(&unwrapped_type, ident).unwrap();
+                let nested_methods = fk.methods(&unwrapped_type, ident, protobuf).unwrap();
                 let unwrapped_type = unwrapped_type.into_token_stream().to_string();
 
                 result.override_ty = Some(match nested_methods.override_ty {
@@ -337,10 +352,14 @@ impl FieldKind {
                             "self.{}.take().unwrap_or_else({}::default)",
                             result.name, unwrapped_type,
                         ));
-                        format!(
-                            "<{} as ::protobuf::Message>::default_instance()",
-                            unwrapped_type,
-                        )
+                        if protobuf {
+                            format!(
+                                "<{} as ::protobuf::Message>::default_instance()",
+                                unwrapped_type,
+                            )
+                        } else {
+                            format!("{}::new_()", unwrapped_type)
+                        }
                     }
                     FieldKind::Bytes => {
                         result.take = Some(format!(
