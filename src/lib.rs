@@ -16,6 +16,7 @@
 //! These functions panic liberally, they are designed to be used from build
 //! scripts, not in production.
 
+pub use crate::wrapper::GenOpt;
 use regex::Regex;
 use std::fs::read_dir;
 use std::fs::File;
@@ -93,9 +94,9 @@ fn rustfmt(file_path: &Path) {
     }
 }
 
-pub fn generate_wrappers<T: AsRef<str>>(file_names: &[T], out_dir: &str) {
+pub fn generate_wrappers<T: AsRef<str>>(file_names: &[T], out_dir: &str, gen_opt: GenOpt) {
     for file in file_names {
-        let gen = wrapper::WrapperGen::new(file.as_ref());
+        let gen = wrapper::WrapperGen::new(file.as_ref(), gen_opt);
         gen.write(out_dir);
     }
 }
