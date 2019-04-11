@@ -52,6 +52,7 @@ impl WrapperGen {
         W: Write,
     {
         let file = ::syn::parse_file(&self.input).expect("Could not parse file");
+        writeln!(buf, "// Generated file, please don't edit manually.\n")?;
         generate_from_items(&file.items, self.gen_opt, "", buf)
     }
 }
@@ -514,7 +515,7 @@ impl FieldMethods {
         if self.has {
             writeln!(
                 buf,
-                "pub fn has_{}(&self) -> bool {{ self.{}.is_some() }}",
+                "#[inline] pub fn has_{}(&self) -> bool {{ self.{}.is_some() }}",
                 self.unesc_name, self.name
             )?;
         }
@@ -531,12 +532,12 @@ impl FieldMethods {
         match &self.clear {
             Some(s) => writeln!(
                 buf,
-                "pub fn clear_{}(&mut self) {{ self.{} = {} }}",
+                "#[inline] pub fn clear_{}(&mut self) {{ self.{} = {} }}",
                 self.unesc_name, self.name, s
             )?,
             None => writeln!(
                 buf,
-                "pub fn clear_{}(&mut self) {{ self.{}.clear(); }}",
+                "#[inline] pub fn clear_{}(&mut self) {{ self.{}.clear(); }}",
                 self.unesc_name, self.name
             )?,
         }
@@ -544,7 +545,7 @@ impl FieldMethods {
         match &self.set {
             Some(s) => writeln!(
                 buf,
-                "pub fn set_{}{}(&mut self, v: {}) {{ self.{} = {}; }}",
+                "#[inline] pub fn set_{}{}(&mut self, v: {}) {{ self.{} = {}; }}",
                 self.unesc_name,
                 // enums already have a different `set` method defined.
                 if self.enum_set { "_" } else { "" },
@@ -554,7 +555,7 @@ impl FieldMethods {
             )?,
             None => writeln!(
                 buf,
-                "pub fn set_{}(&mut self, v: {}) {{ self.{} = v; }}",
+                "#[inline] pub fn set_{}(&mut self, v: {}) {{ self.{} = v; }}",
                 self.unesc_name, ty, self.name
             )?,
         }
@@ -562,7 +563,7 @@ impl FieldMethods {
         match &self.get {
             Some(s) => writeln!(
                 buf,
-                "pub fn get_{}(&self) -> {} {{ {} }}",
+                "#[inline] pub fn get_{}(&self) -> {} {{ {} }}",
                 self.unesc_name, ref_ty, s
             )?,
             None => {
@@ -572,7 +573,7 @@ impl FieldMethods {
                 };
                 writeln!(
                     buf,
-                    "pub fn get_{}(&self) -> {} {{ {}self.{} }}",
+                    "#[inline] pub fn get_{}(&self) -> {} {{ {}self.{} }}",
                     self.unesc_name, ref_ty, rf, self.name
                 )?
             }
@@ -582,14 +583,14 @@ impl FieldMethods {
             MethodKind::Standard => {
                 writeln!(
                     buf,
-                    "pub fn mut_{}(&mut self) -> &mut {} {{ &mut self.{} }}",
+                    "#[inline] pub fn mut_{}(&mut self) -> &mut {} {{ &mut self.{} }}",
                     self.unesc_name, ty, self.name
                 )?;
             }
             MethodKind::Custom(s) => {
                 writeln!(
                     buf,
-                    "pub fn mut_{}(&mut self) -> &mut {} {{ {} }} ",
+                    "#[inline] pub fn mut_{}(&mut self) -> &mut {} {{ {} }} ",
                     self.unesc_name, ty, s
                 )?;
             }
@@ -600,7 +601,7 @@ impl FieldMethods {
         if let Some(s) = &self.take {
             writeln!(
                 buf,
-                "pub fn take_{}(&mut self) -> {} {{ {} }}",
+                "#[inline] pub fn take_{}(&mut self) -> {} {{ {} }}",
                 self.unesc_name, ty, s
             )?;
         }
