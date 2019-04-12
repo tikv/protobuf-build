@@ -367,7 +367,10 @@ impl FieldKind {
                             "self.{}.take().unwrap_or_else({}::default)",
                             result.name, unwrapped_type,
                         ));
-                        format!("{}::new_()", unwrapped_type)
+                        format!(
+                            "<{} as ::protobuf::Message>::default_instance()",
+                            unwrapped_type,
+                        )
                     }
                     FieldKind::Bytes => {
                         result.take = Some(format!(
