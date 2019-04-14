@@ -1,4 +1,4 @@
-# kvproto-build
+# protobuf-build
 
 Utility functions for generating Rust code from protobuf specifications.
 
