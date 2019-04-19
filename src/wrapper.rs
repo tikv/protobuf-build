@@ -110,7 +110,9 @@ where
     W: Write,
 {
     writeln!(buf, "impl {}{} {{", prefix, item.ident)?;
-    generate_new(&item.ident, prefix, buf)?;
+    if gen_opt.contains(GenOpt::NEW) {
+        generate_new(&item.ident, prefix, buf)?;
+    }
     item.fields
         .iter()
         .filter_map(|f| {
