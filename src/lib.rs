@@ -16,6 +16,9 @@
 //! These functions panic liberally, they are designed to be used from build
 //! scripts, not in production.
 
+#[macro_use]
+extern crate bitflags;
+
 pub use crate::wrapper::GenOpt;
 use regex::Regex;
 use std::fs::read_dir;

@@ -8,10 +8,14 @@ use syn::{
     Type,
 };
 
-#[derive(Eq, PartialEq, Clone, Copy)]
-pub enum GenOpt {
-    All,
-    NoImplMessage,
+bitflags! {
+    pub struct GenOpt: u32 {
+        const IMPL = 0b0000_0001;
+        const GETS = 0b0000_0010;
+        const SETS = 0b0000_0100;
+        const NEW_ = 0b0000_1000;
+        const ALL  = 0b0000_1111;
+    }
 }
 
 pub struct WrapperGen {
@@ -107,7 +111,14 @@ where
         .map(|m| m.write_methods(buf))
         .collect::<Result<Vec<_>, _>>()?;
     writeln!(buf, "}}")?;
-    generate_message_trait(&item.ident, prefix, buf, gen_opt)
+    if gen_opt.contains(GenOpt::IMPL) {
+        generate_message_trait(&item.ident, prefix, buf)
+    } else {
+        writeln!(
+            buf,
+            "// `impl ::protobuf::Message` is not generated according to generation options."
+        )
+    }
 }
 
 fn generate_enum<W>(item: &ItemEnum, prefix: &str, buf: &mut W) -> Result<(), io::Error>
@@ -139,21 +150,10 @@ where
     )
 }
 
-fn generate_message_trait<W>(
-    name: &Ident,
-    prefix: &str,
-    buf: &mut W,
-    gen_opt: GenOpt,
-) -> Result<(), io::Error>
+fn generate_message_trait<W>(name: &Ident, prefix: &str, buf: &mut W) -> Result<(), io::Error>
 where
     W: Write,
 {
-    if gen_opt == GenOpt::NoImplMessage {
-        return writeln!(
-            buf,
-            "// impls for `::protobuf::*` stuffs are not generated."
-        );
-    }
     write!(buf, "impl ::protobuf::Clear for {}{} {{", prefix, name)?;
     writeln!(
         buf,
