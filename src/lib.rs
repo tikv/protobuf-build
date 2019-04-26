@@ -16,9 +16,6 @@
 //! These functions panic liberally, they are designed to be used from build
 //! scripts, not in production.
 
-#[macro_use]
-extern crate bitflags;
-
 pub use crate::wrapper::GenOpt;
 use regex::Regex;
 use std::fs::read_dir;
@@ -144,7 +141,7 @@ pub fn replace_read_unknown_fields<T: AsRef<str>>(file_names: &[T]) {
 
         // FIXME Rustfmt bug in string literals
         #[rustfmt::skip]
-        let text = {
+            let text = {
             regex.replace_all(
                 &text,
                 "if $1 == ::protobuf::wire_format::WireTypeVarint {\

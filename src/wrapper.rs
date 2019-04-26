@@ -1,4 +1,5 @@
 use crate::rustfmt;
+use bitflags::bitflags;
 use quote::ToTokens;
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
@@ -11,7 +12,7 @@ use syn::{
 bitflags! {
     pub struct GenOpt: u32 {
         /// Generate implementation for trait `::protobuf::Message`.
-        const MSG = 0b0000_0001;
+        const MESSAGE = 0b0000_0001;
         /// Generate getters.
         const GET = 0b0000_0010;
         /// Generate setters.
@@ -19,13 +20,25 @@ bitflags! {
         /// Generate the `new_` constructors.
         const NEW = 0b0000_1000;
         /// Generate `clear_*` functions.
-        const CLR = 0b0001_0000;
+        const CLEAR = 0b0001_0000;
         /// Generate `has_*` functions.
         const HAS = 0b0010_0000;
         /// Generate mutable getters.
         const MUT = 0b0100_0000;
         /// Generate `take_*` functions.
-        const TKE = 0b1000_0000;
+        const TAKE = 0b1000_0000;
+        /// Except `impl protobuf::Message`.
+        const NO_MSG = Self::GET.bits
+         | Self::SET.bits
+         | Self::CLEAR.bits
+         | Self::HAS.bits
+         | Self::MUT.bits
+         | Self::TAKE.bits;
+        /// Except `new_` and `impl protobuf::Message`.
+        const ACCESSOR = Self::GET.bits
+         | Self::SET.bits
+         | Self::MUT.bits
+         | Self::TAKE.bits;
     }
 }
 
@@ -124,14 +137,10 @@ where
         .map(|m| m.write_methods(buf, gen_opt))
         .collect::<Result<Vec<_>, _>>()?;
     writeln!(buf, "}}")?;
-    if gen_opt.contains(GenOpt::MSG) {
-        generate_message_trait(&item.ident, prefix, buf)
-    } else {
-        writeln!(
-            buf,
-            "// `impl ::protobuf::Message` is not generated according to generation options."
-        )
+    if gen_opt.contains(GenOpt::MESSAGE) {
+        generate_message_trait(&item.ident, prefix, buf)?;
     }
+    Ok(())
 }
 
 fn generate_enum<W>(item: &ItemEnum, prefix: &str, buf: &mut W) -> Result<(), io::Error>
@@ -545,7 +554,7 @@ impl FieldMethods {
             RefType::Deref(s) => format!("&{}", s),
         };
         // clear_*
-        if gen_opt.contains(GenOpt::CLR) {
+        if gen_opt.contains(GenOpt::CLEAR) {
             match &self.clear {
                 Some(s) => writeln!(
                     buf,
@@ -622,7 +631,7 @@ impl FieldMethods {
         }
 
         // take_*
-        if gen_opt.contains(GenOpt::TKE) {
+        if gen_opt.contains(GenOpt::TAKE) {
             if let Some(s) = &self.take {
                 writeln!(
                     buf,
