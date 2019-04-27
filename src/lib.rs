@@ -85,7 +85,7 @@ pub fn generate_prost_files<T: AsRef<str>>(file_names: &[T], out_dir: &str) -> V
     packages
 }
 
-fn rustfmt(file_path: &Path) {
+pub fn rustfmt(file_path: &Path) {
     let output = Command::new("rustfmt")
         .arg(file_path.to_str().unwrap())
         .output();
@@ -141,7 +141,7 @@ pub fn replace_read_unknown_fields<T: AsRef<str>>(file_names: &[T]) {
 
         // FIXME Rustfmt bug in string literals
         #[rustfmt::skip]
-        let text = {
+            let text = {
             regex.replace_all(
                 &text,
                 "if $1 == ::protobuf::wire_format::WireTypeVarint {\

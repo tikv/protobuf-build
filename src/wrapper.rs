@@ -1,4 +1,5 @@
 use crate::rustfmt;
+use bitflags::bitflags;
 use quote::ToTokens;
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
@@ -8,10 +9,37 @@ use syn::{
     Type,
 };
 
-#[derive(Eq, PartialEq, Clone, Copy)]
-pub enum GenOpt {
-    All,
-    NoImplMessage,
+bitflags! {
+    pub struct GenOpt: u32 {
+        /// Generate implementation for trait `::protobuf::Message`.
+        const MESSAGE = 0b0000_0001;
+        /// Generate getters.
+        const GET = 0b0000_0010;
+        /// Generate setters.
+        const SET = 0b0000_0100;
+        /// Generate the `new_` constructors.
+        const NEW = 0b0000_1000;
+        /// Generate `clear_*` functions.
+        const CLEAR = 0b0001_0000;
+        /// Generate `has_*` functions.
+        const HAS = 0b0010_0000;
+        /// Generate mutable getters.
+        const MUT = 0b0100_0000;
+        /// Generate `take_*` functions.
+        const TAKE = 0b1000_0000;
+        /// Except `impl protobuf::Message`.
+        const NO_MSG = Self::GET.bits
+         | Self::SET.bits
+         | Self::CLEAR.bits
+         | Self::HAS.bits
+         | Self::MUT.bits
+         | Self::TAKE.bits;
+        /// Except `new_` and `impl protobuf::Message`.
+        const ACCESSOR = Self::GET.bits
+         | Self::SET.bits
+         | Self::MUT.bits
+         | Self::TAKE.bits;
+    }
 }
 
 pub struct WrapperGen {
@@ -95,7 +123,9 @@ where
     W: Write,
 {
     writeln!(buf, "impl {}{} {{", prefix, item.ident)?;
-    generate_new(&item.ident, prefix, buf)?;
+    if gen_opt.contains(GenOpt::NEW) {
+        generate_new(&item.ident, prefix, buf)?;
+    }
     item.fields
         .iter()
         .filter_map(|f| {
@@ -104,10 +134,13 @@ where
                 .map(|i| (i, &f.ty, FieldKind::from_attrs(&f.attrs)))
         })
         .filter_map(|(n, t, k)| k.methods(t, n))
-        .map(|m| m.write_methods(buf))
+        .map(|m| m.write_methods(buf, gen_opt))
         .collect::<Result<Vec<_>, _>>()?;
     writeln!(buf, "}}")?;
-    generate_message_trait(&item.ident, prefix, buf, gen_opt)
+    if gen_opt.contains(GenOpt::MESSAGE) {
+        generate_message_trait(&item.ident, prefix, buf)?;
+    }
+    Ok(())
 }
 
 fn generate_enum<W>(item: &ItemEnum, prefix: &str, buf: &mut W) -> Result<(), io::Error>
@@ -139,21 +172,10 @@ where
     )
 }
 
-fn generate_message_trait<W>(
-    name: &Ident,
-    prefix: &str,
-    buf: &mut W,
-    gen_opt: GenOpt,
-) -> Result<(), io::Error>
+fn generate_message_trait<W>(name: &Ident, prefix: &str, buf: &mut W) -> Result<(), io::Error>
 where
     W: Write,
 {
-    if gen_opt == GenOpt::NoImplMessage {
-        return writeln!(
-            buf,
-            "// impls for `::protobuf::*` stuffs are not generated."
-        );
-    }
     write!(buf, "impl ::protobuf::Clear for {}{} {{", prefix, name)?;
     writeln!(
         buf,
@@ -510,12 +532,12 @@ impl FieldMethods {
         }
     }
 
-    fn write_methods<W>(&self, buf: &mut W) -> Result<(), io::Error>
+    fn write_methods<W>(&self, buf: &mut W, gen_opt: GenOpt) -> Result<(), io::Error>
     where
         W: Write,
     {
         // has_*
-        if self.has {
+        if self.has && gen_opt.contains(GenOpt::HAS) {
             writeln!(
                 buf,
                 "#[inline] pub fn has_{}(&self) -> bool {{ self.{}.is_some() }}",
@@ -532,81 +554,91 @@ impl FieldMethods {
             RefType::Deref(s) => format!("&{}", s),
         };
         // clear_*
-        match &self.clear {
-            Some(s) => writeln!(
-                buf,
-                "#[inline] pub fn clear_{}(&mut self) {{ self.{} = {} }}",
-                self.unesc_name, self.name, s
-            )?,
-            None => writeln!(
-                buf,
-                "#[inline] pub fn clear_{}(&mut self) {{ self.{}.clear(); }}",
-                self.unesc_name, self.name
-            )?,
+        if gen_opt.contains(GenOpt::CLEAR) {
+            match &self.clear {
+                Some(s) => writeln!(
+                    buf,
+                    "#[inline] pub fn clear_{}(&mut self) {{ self.{} = {} }}",
+                    self.unesc_name, self.name, s
+                )?,
+                None => writeln!(
+                    buf,
+                    "#[inline] pub fn clear_{}(&mut self) {{ self.{}.clear(); }}",
+                    self.unesc_name, self.name
+                )?,
+            }
         }
         // set_*
-        match &self.set {
-            Some(s) => writeln!(
-                buf,
-                "#[inline] pub fn set_{}{}(&mut self, v: {}) {{ self.{} = {}; }}",
-                self.unesc_name,
-                // enums already have a different `set` method defined.
-                if self.enum_set { "_" } else { "" },
-                ty,
-                self.name,
-                s
-            )?,
-            None => writeln!(
-                buf,
-                "#[inline] pub fn set_{}(&mut self, v: {}) {{ self.{} = v; }}",
-                self.unesc_name, ty, self.name
-            )?,
+        if gen_opt.contains(GenOpt::SET) {
+            match &self.set {
+                Some(s) => writeln!(
+                    buf,
+                    "#[inline] pub fn set_{}{}(&mut self, v: {}) {{ self.{} = {}; }}",
+                    self.unesc_name,
+                    // enums already have a different `set` method defined.
+                    if self.enum_set { "_" } else { "" },
+                    ty,
+                    self.name,
+                    s
+                )?,
+                None => writeln!(
+                    buf,
+                    "#[inline] pub fn set_{}(&mut self, v: {}) {{ self.{} = v; }}",
+                    self.unesc_name, ty, self.name
+                )?,
+            }
         }
         // get_*
-        match &self.get {
-            Some(s) => writeln!(
-                buf,
-                "#[inline] pub fn get_{}(&self) -> {} {{ {} }}",
-                self.unesc_name, ref_ty, s
-            )?,
-            None => {
-                let rf = match &self.ref_ty {
-                    RefType::Copy => "",
-                    _ => "&",
-                };
-                writeln!(
+        if gen_opt.contains(GenOpt::GET) {
+            match &self.get {
+                Some(s) => writeln!(
                     buf,
-                    "#[inline] pub fn get_{}(&self) -> {} {{ {}self.{} }}",
-                    self.unesc_name, ref_ty, rf, self.name
-                )?
+                    "#[inline] pub fn get_{}(&self) -> {} {{ {} }}",
+                    self.unesc_name, ref_ty, s
+                )?,
+                None => {
+                    let rf = match &self.ref_ty {
+                        RefType::Copy => "",
+                        _ => "&",
+                    };
+                    writeln!(
+                        buf,
+                        "#[inline] pub fn get_{}(&self) -> {} {{ {}self.{} }}",
+                        self.unesc_name, ref_ty, rf, self.name
+                    )?
+                }
             }
         }
         // mut_*
-        match &self.mt {
-            MethodKind::Standard => {
-                writeln!(
-                    buf,
-                    "#[inline] pub fn mut_{}(&mut self) -> &mut {} {{ &mut self.{} }}",
-                    self.unesc_name, ty, self.name
-                )?;
+        if gen_opt.contains(GenOpt::MUT) {
+            match &self.mt {
+                MethodKind::Standard => {
+                    writeln!(
+                        buf,
+                        "#[inline] pub fn mut_{}(&mut self) -> &mut {} {{ &mut self.{} }}",
+                        self.unesc_name, ty, self.name
+                    )?;
+                }
+                MethodKind::Custom(s) => {
+                    writeln!(
+                        buf,
+                        "#[inline] pub fn mut_{}(&mut self) -> &mut {} {{ {} }} ",
+                        self.unesc_name, ty, s
+                    )?;
+                }
+                MethodKind::None => {}
             }
-            MethodKind::Custom(s) => {
-                writeln!(
-                    buf,
-                    "#[inline] pub fn mut_{}(&mut self) -> &mut {} {{ {} }} ",
-                    self.unesc_name, ty, s
-                )?;
-            }
-            MethodKind::None => {}
         }
 
         // take_*
-        if let Some(s) = &self.take {
-            writeln!(
-                buf,
-                "#[inline] pub fn take_{}(&mut self) -> {} {{ {} }}",
-                self.unesc_name, ty, s
-            )?;
+        if gen_opt.contains(GenOpt::TAKE) {
+            if let Some(s) = &self.take {
+                writeln!(
+                    buf,
+                    "#[inline] pub fn take_{}(&mut self) -> {} {{ {} }}",
+                    self.unesc_name, ty, s
+                )?;
+            }
         }
 
         Ok(())
