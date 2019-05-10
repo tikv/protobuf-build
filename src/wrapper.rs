@@ -200,7 +200,7 @@ where
         buf,
         "fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {{ Self::descriptor_static() }}",
     )?;
-    writeln!(buf, "fn new() -> Self {{ Self::new_() }}",)?;
+    writeln!(buf, "fn new() -> Self {{ Self::default() }}",)?;
     writeln!(
         buf,
         "fn write_to_with_cached_sizes(&self, _os: &mut ::protobuf::CodedOutputStream) -> ::protobuf::ProtobufResult<()> {{ unimplemented!(); }}",
@@ -209,7 +209,7 @@ where
         buf,
         "fn default_instance() -> &'static {}{} {{
             ::lazy_static::lazy_static! {{
-                static ref INSTANCE: {0}{1} = {0}{1}::new_();
+                static ref INSTANCE: {0}{1} = {0}{1}::default();
             }}
             &*INSTANCE
         }}",
