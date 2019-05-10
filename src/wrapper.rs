@@ -14,9 +14,9 @@ bitflags! {
         /// Generate implementation for trait `::protobuf::Message`.
         const MESSAGE = 0b0000_0001;
         /// Generate getters.
-        const GET = 0b0000_0010;
+        const TRIVIAL_GET = 0b0000_0010;
         /// Generate setters.
-        const SET = 0b0000_0100;
+        const TRIVIAL_SET = 0b0000_0100;
         /// Generate the `new_` constructors.
         const NEW = 0b0000_1000;
         /// Generate `clear_*` functions.
@@ -28,15 +28,15 @@ bitflags! {
         /// Generate `take_*` functions.
         const TAKE = 0b1000_0000;
         /// Except `impl protobuf::Message`.
-        const NO_MSG = Self::GET.bits
-         | Self::SET.bits
+        const NO_MSG = Self::TRIVIAL_GET.bits
+         | Self::TRIVIAL_SET.bits
          | Self::CLEAR.bits
          | Self::HAS.bits
          | Self::MUT.bits
          | Self::TAKE.bits;
         /// Except `new_` and `impl protobuf::Message`.
-        const ACCESSOR = Self::GET.bits
-         | Self::SET.bits
+        const ACCESSOR = Self::TRIVIAL_GET.bits
+         | Self::TRIVIAL_SET.bits
          | Self::MUT.bits
          | Self::TAKE.bits;
     }
@@ -569,34 +569,36 @@ impl FieldMethods {
             }
         }
         // set_*
-        if gen_opt.contains(GenOpt::SET) {
-            match &self.set {
-                Some(s) => writeln!(
-                    buf,
-                    "#[inline] pub fn set_{}{}(&mut self, v: {}) {{ self.{} = {}; }}",
-                    self.unesc_name,
-                    // enums already have a different `set` method defined.
-                    if self.enum_set { "_" } else { "" },
-                    ty,
-                    self.name,
-                    s
-                )?,
-                None => writeln!(
-                    buf,
-                    "#[inline] pub fn set_{}(&mut self, v: {}) {{ self.{} = v; }}",
-                    self.unesc_name, ty, self.name
-                )?,
+        match &self.set {
+            Some(s) => writeln!(
+                buf,
+                "#[inline] pub fn set_{}{}(&mut self, v: {}) {{ self.{} = {}; }}",
+                self.unesc_name,
+                // enums already have a different `set` method defined.
+                if self.enum_set { "_" } else { "" },
+                ty,
+                self.name,
+                s
+            )?,
+            None => {
+                if gen_opt.contains(GenOpt::TRIVIAL_SET) {
+                    writeln!(
+                        buf,
+                        "#[inline] pub fn set_{}(&mut self, v: {}) {{ self.{} = v; }}",
+                        self.unesc_name, ty, self.name
+                    )?
+                }
             }
         }
         // get_*
-        if gen_opt.contains(GenOpt::GET) {
-            match &self.get {
-                Some(s) => writeln!(
-                    buf,
-                    "#[inline] pub fn get_{}(&self) -> {} {{ {} }}",
-                    self.unesc_name, ref_ty, s
-                )?,
-                None => {
+        match &self.get {
+            Some(s) => writeln!(
+                buf,
+                "#[inline] pub fn get_{}(&self) -> {} {{ {} }}",
+                self.unesc_name, ref_ty, s
+            )?,
+            None => {
+                if gen_opt.contains(GenOpt::TRIVIAL_GET) {
                     let rf = match &self.ref_ty {
                         RefType::Copy => "",
                         _ => "&",
