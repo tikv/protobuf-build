@@ -138,7 +138,7 @@ where
         .collect::<Result<Vec<_>, _>>()?;
     writeln!(buf, "}}")?;
     if gen_opt.contains(GenOpt::MESSAGE) {
-        generate_message_trait(&item.ident, prefix, buf)?;
+        generate_message_trait(&item.ident, prefix, buf, gen_opt.contains(GenOpt::NEW))?;
     }
     Ok(())
 }
@@ -172,7 +172,12 @@ where
     )
 }
 
-fn generate_message_trait<W>(name: &Ident, prefix: &str, buf: &mut W) -> Result<(), io::Error>
+fn generate_message_trait<W>(
+    name: &Ident,
+    prefix: &str,
+    buf: &mut W,
+    has_new: bool,
+) -> Result<(), io::Error>
 where
     W: Write,
 {
@@ -200,7 +205,11 @@ where
         buf,
         "fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {{ Self::descriptor_static() }}",
     )?;
-    writeln!(buf, "fn new() -> Self {{ Self::default() }}",)?;
+    if has_new {
+        writeln!(buf, "fn new() -> Self {{ Self::new_() }}",)?;
+    } else {
+        writeln!(buf, "fn new() -> Self {{ Self::default() }}",)?;
+    }
     writeln!(
         buf,
         "fn write_to_with_cached_sizes(&self, _os: &mut ::protobuf::CodedOutputStream) -> ::protobuf::ProtobufResult<()> {{ unimplemented!(); }}",
@@ -209,7 +218,7 @@ where
         buf,
         "fn default_instance() -> &'static {}{} {{
             ::lazy_static::lazy_static! {{
-                static ref INSTANCE: {0}{1} = {0}{1}::default();
+                static ref INSTANCE: {0}{1} = {0}{1}::new();
             }}
             &*INSTANCE
         }}",
