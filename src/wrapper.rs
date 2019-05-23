@@ -14,9 +14,9 @@ bitflags! {
         /// Generate implementation for trait `::protobuf::Message`.
         const MESSAGE = 0b0000_0001;
         /// Generate getters.
-        const GET = 0b0000_0010;
+        const TRIVIAL_GET = 0b0000_0010;
         /// Generate setters.
-        const SET = 0b0000_0100;
+        const TRIVIAL_SET = 0b0000_0100;
         /// Generate the `new_` constructors.
         const NEW = 0b0000_1000;
         /// Generate `clear_*` functions.
@@ -28,15 +28,15 @@ bitflags! {
         /// Generate `take_*` functions.
         const TAKE = 0b1000_0000;
         /// Except `impl protobuf::Message`.
-        const NO_MSG = Self::GET.bits
-         | Self::SET.bits
+        const NO_MSG = Self::TRIVIAL_GET.bits
+         | Self::TRIVIAL_SET.bits
          | Self::CLEAR.bits
          | Self::HAS.bits
          | Self::MUT.bits
          | Self::TAKE.bits;
         /// Except `new_` and `impl protobuf::Message`.
-        const ACCESSOR = Self::GET.bits
-         | Self::SET.bits
+        const ACCESSOR = Self::TRIVIAL_GET.bits
+         | Self::TRIVIAL_SET.bits
          | Self::MUT.bits
          | Self::TAKE.bits;
     }
@@ -138,7 +138,7 @@ where
         .collect::<Result<Vec<_>, _>>()?;
     writeln!(buf, "}}")?;
     if gen_opt.contains(GenOpt::MESSAGE) {
-        generate_message_trait(&item.ident, prefix, buf)?;
+        generate_message_trait(&item.ident, prefix, buf, gen_opt.contains(GenOpt::NEW))?;
     }
     Ok(())
 }
@@ -172,7 +172,12 @@ where
     )
 }
 
-fn generate_message_trait<W>(name: &Ident, prefix: &str, buf: &mut W) -> Result<(), io::Error>
+fn generate_message_trait<W>(
+    name: &Ident,
+    prefix: &str,
+    buf: &mut W,
+    has_new: bool,
+) -> Result<(), io::Error>
 where
     W: Write,
 {
@@ -200,21 +205,35 @@ where
         buf,
         "fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {{ Self::descriptor_static() }}",
     )?;
-    writeln!(buf, "fn new() -> Self {{ Self::new_() }}",)?;
     writeln!(
         buf,
         "fn write_to_with_cached_sizes(&self, _os: &mut ::protobuf::CodedOutputStream) -> ::protobuf::ProtobufResult<()> {{ unimplemented!(); }}",
     )?;
-    writeln!(
-        buf,
-        "fn default_instance() -> &'static {}{} {{
+    if has_new {
+        writeln!(buf, "fn new() -> Self {{ Self::new_() }}",)?;
+        writeln!(
+            buf,
+            "fn default_instance() -> &'static {}{} {{
             ::lazy_static::lazy_static! {{
                 static ref INSTANCE: {0}{1} = {0}{1}::new_();
             }}
             &*INSTANCE
         }}",
-        prefix, name,
-    )?;
+            prefix, name,
+        )?;
+    } else {
+        writeln!(buf, "fn new() -> Self {{ Self::default() }}",)?;
+        writeln!(
+            buf,
+            "fn default_instance() -> &'static {}{} {{
+            ::lazy_static::lazy_static! {{
+                static ref INSTANCE: {0}{1} = {0}{1}::default();
+            }}
+            &*INSTANCE
+        }}",
+            prefix, name,
+        )?;
+    }
     // The only way for this to be false is if there are `required` fields, but
     // afaict, we never use that feature. In any case rust-protobuf plans to
     // always return `true` in 3.0.
@@ -569,34 +588,36 @@ impl FieldMethods {
             }
         }
         // set_*
-        if gen_opt.contains(GenOpt::SET) {
-            match &self.set {
-                Some(s) => writeln!(
-                    buf,
-                    "#[inline] pub fn set_{}{}(&mut self, v: {}) {{ self.{} = {}; }}",
-                    self.unesc_name,
-                    // enums already have a different `set` method defined.
-                    if self.enum_set { "_" } else { "" },
-                    ty,
-                    self.name,
-                    s
-                )?,
-                None => writeln!(
-                    buf,
-                    "#[inline] pub fn set_{}(&mut self, v: {}) {{ self.{} = v; }}",
-                    self.unesc_name, ty, self.name
-                )?,
+        match &self.set {
+            Some(s) => writeln!(
+                buf,
+                "#[inline] pub fn set_{}{}(&mut self, v: {}) {{ self.{} = {}; }}",
+                self.unesc_name,
+                // enums already have a different `set` method defined.
+                if self.enum_set { "_" } else { "" },
+                ty,
+                self.name,
+                s
+            )?,
+            None => {
+                if gen_opt.contains(GenOpt::TRIVIAL_SET) {
+                    writeln!(
+                        buf,
+                        "#[inline] pub fn set_{}(&mut self, v: {}) {{ self.{} = v; }}",
+                        self.unesc_name, ty, self.name
+                    )?
+                }
             }
         }
         // get_*
-        if gen_opt.contains(GenOpt::GET) {
-            match &self.get {
-                Some(s) => writeln!(
-                    buf,
-                    "#[inline] pub fn get_{}(&self) -> {} {{ {} }}",
-                    self.unesc_name, ref_ty, s
-                )?,
-                None => {
+        match &self.get {
+            Some(s) => writeln!(
+                buf,
+                "#[inline] pub fn get_{}(&self) -> {} {{ {} }}",
+                self.unesc_name, ref_ty, s
+            )?,
+            None => {
+                if gen_opt.contains(GenOpt::TRIVIAL_GET) {
                     let rf = match &self.ref_ty {
                         RefType::Copy => "",
                         _ => "&",
