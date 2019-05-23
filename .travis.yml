@@ -1,12 +1,3 @@
-branches:
-  only:
-    # This is where pull requests from "bors r+" are built.
-    - staging
-    # This is where pull requests from "bors try" are built.
-    - trying
-    # Enable building pull requests.
-    - master
-
 language: rust
 sudo: false
 env:
@@ -23,17 +14,13 @@ matrix:
   # We don't check them on nightly since their lints and formatting may differ.
   - rust: stable
     install:
-      - rustup component add rustfmt-preview
-      - rustup component add clippy-preview
+      - rustup component add rustfmt
+      - rustup component add clippy
     before_script:
-      - cargo fmt --all -- --check
-      - cargo clippy --all -- -D clippy::all
+      - cargo fmt -- --check
+      - cargo clippy
   # Since many users will use nightlies, also test that.
   - rust: nightly
 
 script:
   - cargo test --all -- --nocapture
-  # Validate benches still work.
-  - cargo bench --all -- --test
-  # Because failpoints inject failure in code path, which will affect all concurrently running tests, Hence they need to be synchronized, which make tests slow.
-  - cargo test --tests --features failpoint -- --nocapture
