@@ -205,25 +205,35 @@ where
         buf,
         "fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {{ Self::descriptor_static() }}",
     )?;
-    if has_new {
-        writeln!(buf, "fn new() -> Self {{ Self::new_() }}",)?;
-    } else {
-        writeln!(buf, "fn new() -> Self {{ Self::default() }}",)?;
-    }
     writeln!(
         buf,
         "fn write_to_with_cached_sizes(&self, _os: &mut ::protobuf::CodedOutputStream) -> ::protobuf::ProtobufResult<()> {{ unimplemented!(); }}",
     )?;
-    writeln!(
-        buf,
-        "fn default_instance() -> &'static {}{} {{
+    if has_new {
+        writeln!(buf, "fn new() -> Self {{ Self::new_() }}",)?;
+        writeln!(
+            buf,
+            "fn default_instance() -> &'static {}{} {{
             ::lazy_static::lazy_static! {{
-                static ref INSTANCE: {0}{1} = {0}{1}::new();
+                static ref INSTANCE: {0}{1} = {0}{1}::new_();
             }}
             &*INSTANCE
         }}",
-        prefix, name,
-    )?;
+            prefix, name,
+        )?;
+    } else {
+        writeln!(buf, "fn new() -> Self {{ Self::default() }}",)?;
+        writeln!(
+            buf,
+            "fn default_instance() -> &'static {}{} {{
+            ::lazy_static::lazy_static! {{
+                static ref INSTANCE: {0}{1} = {0}{1}::default();
+            }}
+            &*INSTANCE
+        }}",
+            prefix, name,
+        )?;
+    }
     // The only way for this to be false is if there are `required` fields, but
     // afaict, we never use that feature. In any case rust-protobuf plans to
     // always return `true` in 3.0.
