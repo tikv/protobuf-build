@@ -39,7 +39,7 @@ pub fn check_protoc_version() {
     let minor = caps.get(2).unwrap().as_str().parse::<i16>().unwrap();
     if major == 3 && minor < 1 || major < 3 {
         panic!(
-            "Invalid version of protoc (required 3.1.x, get {}.{}.x).",
+            "Invalid version of protoc (required at least 3.1.x, get {}.{}.x).",
             major, minor,
         );
     }
