@@ -199,7 +199,7 @@ where
     )?;
     writeln!(
         buf,
-        "fn as_any(&self) -> &::std::any::Any {{ self as &::std::any::Any }}",
+        "fn as_any(&self) -> &dyn ::std::any::Any {{ self as &dyn ::std::any::Any }}",
     )?;
     writeln!(
         buf,
