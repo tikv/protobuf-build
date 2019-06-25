@@ -254,7 +254,7 @@ where
         buf,
         "fn write_to_bytes(&self) -> ::protobuf::ProtobufResult<Vec<u8>> {{
             let mut buf = Vec::new();
-            if let Err(_) = ::prost::Message::encode(self, &mut buf) {{
+            if ::prost::Message::encode(self, &mut buf).is_err() {{
                 return Err(::protobuf::ProtobufError::WireError(::protobuf::error::WireError::Other));
             }}
             Ok(buf)
@@ -263,7 +263,7 @@ where
     writeln!(
         buf,
         "fn merge_from_bytes(&mut self, bytes: &[u8]) -> ::protobuf::ProtobufResult<()> {{
-            if let Err(_) = ::prost::Message::merge(self, bytes) {{
+            if ::prost::Message::merge(self, bytes).is_err() {{
                 return Err(::protobuf::ProtobufError::WireError(::protobuf::error::WireError::Other));
             }}
             Ok(())
