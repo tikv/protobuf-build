@@ -126,6 +126,7 @@ where
     if gen_opt.contains(GenOpt::NEW) {
         generate_new(&item.ident, prefix, buf)?;
     }
+    generate_default_ref(&item.ident, prefix, gen_opt, buf)?;
     item.fields
         .iter()
         .filter_map(|f| {
@@ -172,6 +173,45 @@ where
     )
 }
 
+fn generate_default_ref<W>(
+    name: &Ident,
+    prefix: &str,
+    gen_opt: GenOpt,
+    buf: &mut W,
+) -> Result<(), io::Error>
+where
+    W: Write,
+{
+    if gen_opt.contains(GenOpt::MESSAGE) {
+        writeln!(
+            buf,
+            "#[inline] pub fn default_ref() -> &'static Self {{ ::prost::Message::default_instance() }}",
+        )
+    } else if gen_opt.contains(GenOpt::NEW) {
+        writeln!(
+            buf,
+            "#[inline] pub fn default_ref() -> &'static Self {{
+                ::lazy_static::lazy_static! {{
+                    static ref INSTANCE: {0}{1} = {0}{1}::new_();
+                }}
+                &*INSTANCE
+            }}",
+            prefix, name,
+        )
+    } else {
+        writeln!(
+            buf,
+            "#[inline] pub fn default_ref() -> &'static Self {{
+                ::lazy_static::lazy_static! {{
+                    static ref INSTANCE: {0}{1} = {0}{1}::default();
+                }}
+                &*INSTANCE
+            }}",
+            prefix, name,
+        )
+    }
+}
+
 fn generate_message_trait<W>(
     name: &Ident,
     prefix: &str,
@@ -205,10 +245,6 @@ where
         buf,
         "fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {{ Self::descriptor_static() }}",
     )?;
-    writeln!(
-        buf,
-        "fn write_to_with_cached_sizes(&self, _os: &mut ::protobuf::CodedOutputStream) -> ::protobuf::ProtobufResult<()> {{ unimplemented!(); }}",
-    )?;
     if has_new {
         writeln!(buf, "fn new() -> Self {{ Self::new_() }}",)?;
         writeln!(
@@ -238,6 +274,10 @@ where
     // afaict, we never use that feature. In any case rust-protobuf plans to
     // always return `true` in 3.0.
     writeln!(buf, "fn is_initialized(&self) -> bool {{ true }}",)?;
+    writeln!(
+        buf,
+        "fn write_to_with_cached_sizes(&self, _os: &mut ::protobuf::CodedOutputStream) -> ::protobuf::ProtobufResult<()> {{ unimplemented!(); }}",
+    )?;
     writeln!(
         buf,
         "fn merge_from(&mut self, _is: &mut ::protobuf::CodedInputStream) -> ::protobuf::ProtobufResult<()> {{ unimplemented!(); }}",
@@ -408,10 +448,7 @@ impl FieldKind {
                             "self.{}.take().unwrap_or_else({}::default)",
                             result.name, unwrapped_type,
                         ));
-                        format!(
-                            "<{} as ::protobuf::Message>::default_instance()",
-                            unwrapped_type,
-                        )
+                        format!("{}::default_ref()", unwrapped_type,)
                     }
                     FieldKind::Bytes => {
                         result.take = Some(format!(
