@@ -139,7 +139,7 @@ where
         .collect::<Result<Vec<_>, _>>()?;
     writeln!(buf, "}}")?;
     if gen_opt.contains(GenOpt::MESSAGE) {
-        generate_message_trait(&item.ident, prefix, buf, gen_opt.contains(GenOpt::NEW))?;
+        generate_message_trait(&item.ident, prefix, buf)?;
     }
     Ok(())
 }
@@ -185,18 +185,7 @@ where
     if gen_opt.contains(GenOpt::MESSAGE) {
         writeln!(
             buf,
-            "#[inline] pub fn default_ref() -> &'static Self {{ ::prost::Message::default_instance() }}",
-        )
-    } else if gen_opt.contains(GenOpt::NEW) {
-        writeln!(
-            buf,
-            "#[inline] pub fn default_ref() -> &'static Self {{
-                ::lazy_static::lazy_static! {{
-                    static ref INSTANCE: {0}{1} = {0}{1}::new_();
-                }}
-                &*INSTANCE
-            }}",
-            prefix, name,
+            "#[inline] pub fn default_ref() -> &'static Self {{ ::protobuf::Message::default_instance() }}",
         )
     } else {
         writeln!(
@@ -212,12 +201,7 @@ where
     }
 }
 
-fn generate_message_trait<W>(
-    name: &Ident,
-    prefix: &str,
-    buf: &mut W,
-    has_new: bool,
-) -> Result<(), io::Error>
+fn generate_message_trait<W>(name: &Ident, prefix: &str, buf: &mut W) -> Result<(), io::Error>
 where
     W: Write,
 {
@@ -245,31 +229,17 @@ where
         buf,
         "fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {{ Self::descriptor_static() }}",
     )?;
-    if has_new {
-        writeln!(buf, "fn new() -> Self {{ Self::new_() }}",)?;
-        writeln!(
-            buf,
-            "fn default_instance() -> &'static {}{} {{
-            ::lazy_static::lazy_static! {{
-                static ref INSTANCE: {0}{1} = {0}{1}::new_();
-            }}
-            &*INSTANCE
-        }}",
-            prefix, name,
-        )?;
-    } else {
-        writeln!(buf, "fn new() -> Self {{ Self::default() }}",)?;
-        writeln!(
-            buf,
-            "fn default_instance() -> &'static {}{} {{
-            ::lazy_static::lazy_static! {{
-                static ref INSTANCE: {0}{1} = {0}{1}::default();
-            }}
-            &*INSTANCE
-        }}",
-            prefix, name,
-        )?;
-    }
+    writeln!(buf, "fn new() -> Self {{ Self::default() }}",)?;
+    writeln!(
+        buf,
+        "fn default_instance() -> &'static {}{} {{
+        ::lazy_static::lazy_static! {{
+            static ref INSTANCE: {0}{1} = {0}{1}::default();
+        }}
+        &*INSTANCE
+    }}",
+        prefix, name,
+    )?;
     // The only way for this to be false is if there are `required` fields, but
     // afaict, we never use that feature. In any case rust-protobuf plans to
     // always return `true` in 3.0.
