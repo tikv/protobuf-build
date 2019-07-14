@@ -442,11 +442,14 @@ impl FieldKind {
 
                 result.get = Some(match &**fk {
                     FieldKind::Enumeration(t) => format!(
-                        "unsafe {{ ::std::mem::transmute::<i32, {}>(match self.{} {{
-                            Some(v) => v,
+                        "match self.{} {{
+                            Some(v) => match {}::from_i32(v) {{\
+                                Some(e) => e,
+                                None => panic!(\"Unknown enum variant: {{}}\", v),
+                            }},
                             None => 0,
-                        }}) }}",
-                        t, result.name,
+                        }}",
+                        result.name, t,
                     ),
                     _ => format!(
                         "match self.{}{} {{
@@ -499,12 +502,15 @@ impl FieldKind {
                 result.clear = Some("0".to_owned());
                 result.set = Some(format!(
                     "unsafe {{ ::std::mem::transmute::<{}, i32>(v) }}",
-                    enum_type
+                    enum_type,
                 ));
                 result.enum_set = true;
                 result.get = Some(format!(
-                    "unsafe {{ ::std::mem::transmute::<i32, {}>(self.{}) }}",
-                    enum_type, result.name
+                    "match {}::from_i32(self.{}) {{\
+                        Some(e) => e,
+                        None => panic!(\"Unknown enum variant: {{}}\", self.{1}),
+                    }}",
+                    enum_type, result.name,
                 ));
             }
             // There's only a few `oneof`s and they are a bit complex, so easier to
