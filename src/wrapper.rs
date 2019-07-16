@@ -390,7 +390,7 @@ impl FieldKind {
                 result.has = true;
                 result.clear = Some("::std::option::Option::None".to_owned());
                 result.set = Some(match &**fk {
-                    FieldKind::Enumeration(t) => format!("::std::option::Option::Some(unsafe {{ ::std::mem::transmute::<{}, i32>(v) }})", t),
+                    FieldKind::Enumeration(_) => "::std::option::Option::Some(v as i32)".to_owned(),
                     _ => "::std::option::Option::Some(v)".to_owned(),
                 });
 
@@ -500,10 +500,7 @@ impl FieldKind {
                 result.override_ty = Some(enum_type.clone());
                 result.ref_ty = RefType::Copy;
                 result.clear = Some("0".to_owned());
-                result.set = Some(format!(
-                    "unsafe {{ ::std::mem::transmute::<{}, i32>(v) }}",
-                    enum_type,
-                ));
+                result.set = Some("v as i32".to_owned());
                 result.enum_set = true;
                 result.get = Some(format!(
                     "match {}::from_i32(self.{}) {{\
@@ -600,27 +597,23 @@ impl FieldMethods {
                 )?,
             }
         }
+        // rust-protobuf escapes keywords using `field`, whereas Prost uses `r#`, in the case
+        // where that happens, we should generate a wrapper `set_` method for consistency.
+        let field_esc =
+            self.unesc_name.starts_with("field") && !self.name.to_string().starts_with("field");
         // set_*
         match &self.set {
-            Some(s) => writeln!(
+            Some(s) if field_esc || !self.enum_set => writeln!(
                 buf,
-                "#[inline] pub fn set_{}{}(&mut self, v: {}) {{ self.{} = {}; }}",
-                self.unesc_name,
-                // enums already have a different `set` method defined.
-                if self.enum_set { "_" } else { "" },
-                ty,
-                self.name,
-                s
+                "#[inline] pub fn set_{}(&mut self, v: {}) {{ self.{} = {}; }}",
+                self.unesc_name, ty, self.name, s
             )?,
-            None => {
-                if gen_opt.contains(GenOpt::TRIVIAL_SET) {
-                    writeln!(
-                        buf,
-                        "#[inline] pub fn set_{}(&mut self, v: {}) {{ self.{} = v; }}",
-                        self.unesc_name, ty, self.name
-                    )?
-                }
-            }
+            None if gen_opt.contains(GenOpt::TRIVIAL_SET) => writeln!(
+                buf,
+                "#[inline] pub fn set_{}(&mut self, v: {}) {{ self.{} = v; }}",
+                self.unesc_name, ty, self.name
+            )?,
+            _ => {}
         }
         // get_*
         match &self.get {
