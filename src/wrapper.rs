@@ -81,6 +81,11 @@ impl WrapperGen {
     {
         let file = ::syn::parse_file(&self.input).expect("Could not parse file");
         writeln!(buf, "// Generated file, please don't edit manually.\n")?;
+        let name_parts: Vec<_> = self.name["wrapper_".len()..self.name.len() - ".rs".len()]
+            .split('.')
+            .filter(|s| !s.is_empty())
+            .collect();
+        writeln!(buf, "use super::{}::*;", name_parts.join("::")).unwrap();
         generate_from_items(&file.items, self.gen_opt, "", buf)
     }
 }
