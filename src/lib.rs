@@ -139,7 +139,7 @@ mod protobuf_imps {
         let mut files_to_generate = Vec::new();
         'outer: for file in files {
             for include in includes {
-                if let Some(truncated) = file.as_ref().strip_prefix(include).ok() {
+                if let Ok(truncated) = file.as_ref().strip_prefix(include) {
                     files_to_generate.push(format!("{}", truncated.display()));
                     continue 'outer;
                 }
