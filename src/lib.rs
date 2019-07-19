@@ -18,10 +18,9 @@
 
 #[cfg(feature = "prost-codec")]
 pub use crate::wrapper::GenOpt;
-use regex::Regex;
 use std::fmt::Debug;
 use std::fs::{self, File};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::Path;
 
 #[cfg(feature = "prost-codec")]
@@ -51,11 +50,13 @@ pub fn generate_files<T: AsRef<Path> + Debug>(includes: &[T], files: &[T], out_d
             }
         })
         .collect();
-    replace_read_unknown_fields(&generated);
     let mut f = File::create(format!("{}/mod.rs", out_dir)).unwrap();
     for (module, file_name) in &modules {
         if !module.contains('.') {
             writeln!(f, "pub mod {};", module).unwrap();
+            continue;
+        }
+        if module.starts_with("wrapper_") {
             continue;
         }
         let mut level = 0;
@@ -64,6 +65,9 @@ pub fn generate_files<T: AsRef<Path> + Debug>(includes: &[T], files: &[T], out_d
             level += 1;
         }
         writeln!(f, "include!(\"{}.rs\");", file_name).unwrap();
+        if Path::new(&format!("{}/wrapper_{}.rs", out_dir, file_name)).exists() {
+            writeln!(f, "include!(\"wrapper_{}.rs\");", file_name).unwrap();
+        }
         for _ in (0..level).rev() {
             writeln!(f, "{:1$}}}", "", level).unwrap();
         }
@@ -79,6 +83,8 @@ mod protobuf_imps {
     use std::path::Path;
     use std::process::Command;
     use std::str::from_utf8;
+    use std::io::{Read, Write};
+    use std::fs::{self, File};
 
     pub fn get_protoc() -> String {
         let protoc_bin_name = match (env::consts::OS, env::consts::ARCH) {
@@ -156,6 +162,7 @@ mod protobuf_imps {
         )
         .unwrap();
         generate_grpcio(&desc.get_file(), &files_to_generate, out_dir);
+        replace_read_unknown_fields(out_dir);
     }
 
     #[cfg(feature = "grpcio-protobuf-codec")]
@@ -178,6 +185,44 @@ mod protobuf_imps {
     #[cfg(all(feature = "protobuf-codec", not(feature = "grpcio-protobuf-codec")))]
     pub fn generate_grpcio(_: &[protobuf::descriptor::FileDescriptorProto], _: &[String], _: &str) {
     }
+
+
+    /// Convert protobuf files to use the old way of reading protobuf enums.
+    // FIXME: Remove this once stepancheg/rust-protobuf#233 is resolved.
+    pub fn replace_read_unknown_fields(out_dir: &str) {
+        let regex =
+            Regex::new(r"::protobuf::rt::read_proto3_enum_with_unknown_fields_into\(([^,]+), ([^,]+), &mut ([^,]+), [^\)]+\)\?").unwrap();
+        for f in fs::read_dir(out_dir).unwrap() {
+            let path = match f {
+                Ok(p) => p.path(),
+                Err(e) => panic!("failed to list {}: {:?}", out_dir, e),
+            };
+            if path.extension() != Some(std::ffi::OsStr::new("rs")) {
+                continue;
+            }
+            
+            let mut text = String::new();
+            let mut f = File::open(&path).unwrap();
+            f.read_to_string(&mut text)
+                .expect("Couldn't read source file");
+
+            // FIXME Rustfmt bug in string literals
+            #[rustfmt::skip]
+            let text = {
+                regex.replace_all(
+                    &text,
+                    "if $1 == ::protobuf::wire_format::WireTypeVarint {\
+                        $3 = $2.read_enum()?;\
+                    } else {\
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));\
+                    }",
+                )
+            };
+            let mut out = File::create(&path).unwrap();
+            out.write_all(text.as_bytes())
+                .expect("Could not write source file");
+        }
+    }
 }
 
 #[cfg(feature = "protobuf-codec")]
@@ -197,12 +242,7 @@ pub fn generate<T: AsRef<Path>>(includes: &[T], files: &[T], out_dir: &str) {
             .map(|m| format!("{}/{}.rs", out_dir, m))
             .collect::<Vec<_>>(),
         out_dir,
-        GenOpt::MUT
-            | GenOpt::HAS
-            | GenOpt::TAKE
-            | GenOpt::CLEAR
-            | GenOpt::MESSAGE
-            | GenOpt::TRIVIAL_SET,
+        GenOpt::all(),
     );
 }
 
@@ -270,34 +310,3 @@ mod prost_imps {
 
 #[cfg(feature = "prost-codec")]
 pub use prost_imps::*;
-
-/// Convert protobuf files to use the old way of reading protobuf enums.
-// FIXME: Remove this once stepancheg/rust-protobuf#233 is resolved.
-pub fn replace_read_unknown_fields<T: AsRef<str>>(file_names: &[T]) {
-    let regex =
-        Regex::new(r"::protobuf::rt::read_proto3_enum_with_unknown_fields_into\(([^,]+), ([^,]+), &mut ([^,]+), [^\)]+\)\?").unwrap();
-    for file_name in file_names {
-        let mut text = String::new();
-        {
-            let mut f = File::open(file_name.as_ref()).unwrap();
-            f.read_to_string(&mut text)
-                .expect("Couldn't read source file");
-        }
-
-        // FIXME Rustfmt bug in string literals
-        #[rustfmt::skip]
-            let text = {
-            regex.replace_all(
-                &text,
-                "if $1 == ::protobuf::wire_format::WireTypeVarint {\
-                    $3 = $2.read_enum()?;\
-                 } else {\
-                    return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));\
-                 }",
-            )
-        };
-        let mut out = File::create(file_name.as_ref()).unwrap();
-        out.write_all(text.as_bytes())
-            .expect("Could not write source file");
-    }
-}
