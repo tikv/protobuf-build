@@ -53,7 +53,7 @@ pub fn generate_files<T: AsRef<Path> + Debug>(includes: &[T], files: &[T], out_d
     let mut f = File::create(format!("{}/mod.rs", out_dir)).unwrap();
     for (module, file_name) in &modules {
         if cfg!(feature = "protobuf-codec") {
-            writeln!(f, "pub mod {};", module);
+            writeln!(f, "pub mod {};", module).unwrap();
             continue;
         }
         if module.starts_with("wrapper_") {
@@ -64,7 +64,14 @@ pub fn generate_files<T: AsRef<Path> + Debug>(includes: &[T], files: &[T], out_d
             writeln!(f, "{:level$}pub mod {} {{", "", part, level = level).unwrap();
             level += 1;
         }
-        writeln!(f, "{:level$}include!(\"{}.rs\");", "", file_name, level = level).unwrap();
+        writeln!(
+            f,
+            "{:level$}include!(\"{}.rs\");",
+            "",
+            file_name,
+            level = level
+        )
+        .unwrap();
         if Path::new(&format!("{}/wrapper_{}.rs", out_dir, file_name)).exists() {
             writeln!(
                 f,
@@ -263,6 +270,15 @@ pub fn generate<T: AsRef<Path>>(includes: &[T], files: &[T], out_dir: &str) {
         file_name.push(&format!("{}.rs", package));
         rustfmt(&file_name);
     }
+    let mod_names = module_names_for_dir(out_dir);
+    generate_wrappers(
+        &mod_names
+            .iter()
+            .map(|m| format!("{}/{}.rs", out_dir, m))
+            .collect::<Vec<_>>(),
+        out_dir,
+        GenOpt::all(),
+    );
 }
 
 #[cfg(feature = "prost-codec")]
