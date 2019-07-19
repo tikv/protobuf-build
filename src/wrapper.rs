@@ -447,9 +447,9 @@ impl FieldKind {
                                 Some(e) => e,
                                 None => panic!(\"Unknown enum variant: {{}}\", v),
                             }},
-                            None => 0,
+                            None => {}::default(),
                         }}",
-                        result.name, t,
+                        result.name, t, t,
                     ),
                     _ => format!(
                         "match self.{}{} {{

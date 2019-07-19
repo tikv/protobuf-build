@@ -6,11 +6,19 @@ edition = "2018"
 license = "Apache-2.0"
 description = "Utility functions for generating Rust code from protobufs (using protobuf-rust or Prost)"
 
+[features]
+default = ["protobuf-codec"]
+protobuf-codec = ["protobuf-codegen", "protobuf"]
+grpcio-protobuf-codec = ["grpcio-compiler/protobuf-codec", "protobuf-codec"]
+prost-codec = ["grpcio-compiler/prost-codec", "syn", "quote", "bitflags", "prost-build"]
+grpcio-prost-codec = ["grpcio-compiler/prost-codec", "prost-codec"]
+
 [dependencies]
-protoc-rust = "2.0"
-protoc-grpcio = "1.0.2"
-grpcio-compiler = "0.5.0-alpha"
-regex = "1.1"
-syn = { version = "0.15", features = ["full"] }
-quote = "0.6"
-bitflags = "1.0.4"
+protobuf = { version = "2", optional = true }
+protobuf-codegen = { version = "2", optional = true }
+grpcio-compiler = { version = "0.5.0-alpha", default-features = false, optional = true }
+prost-build = { version = "0.5", optional = true }
+regex = { version = "1.1" }
+syn = { version = "0.15", features = ["full"], optional = true }
+quote = { version = "0.6", optional = true }
+bitflags = { version = "1.0.4", optional = true }
