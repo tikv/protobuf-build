@@ -52,10 +52,6 @@ pub fn generate_files<T: AsRef<Path> + Debug>(includes: &[T], files: &[T], out_d
         .collect();
     let mut f = File::create(format!("{}/mod.rs", out_dir)).unwrap();
     for (module, file_name) in &modules {
-        if !module.contains('.') {
-            writeln!(f, "pub mod {};", module).unwrap();
-            continue;
-        }
         if module.starts_with("wrapper_") {
             continue;
         }
@@ -64,9 +60,16 @@ pub fn generate_files<T: AsRef<Path> + Debug>(includes: &[T], files: &[T], out_d
             writeln!(f, "{:level$}pub mod {} {{", "", part, level = level).unwrap();
             level += 1;
         }
-        writeln!(f, "include!(\"{}.rs\");", file_name).unwrap();
+        writeln!(f, "{:level$}include!(\"{}.rs\");", "", file_name, level = level).unwrap();
         if Path::new(&format!("{}/wrapper_{}.rs", out_dir, file_name)).exists() {
-            writeln!(f, "include!(\"wrapper_{}.rs\");", file_name).unwrap();
+            writeln!(
+                f,
+                "{:level$}include!(\"wrapper_{}.rs\");",
+                "",
+                file_name,
+                level = level
+            )
+            .unwrap();
         }
         for _ in (0..level).rev() {
             writeln!(f, "{:1$}}}", "", level).unwrap();
