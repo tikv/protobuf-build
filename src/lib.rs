@@ -52,6 +52,10 @@ pub fn generate_files<T: AsRef<Path> + Debug>(includes: &[T], files: &[T], out_d
         .collect();
     let mut f = File::create(format!("{}/mod.rs", out_dir)).unwrap();
     for (module, file_name) in &modules {
+        if cfg!(feature = "protobuf-codec") {
+            writeln!(f, "pub mod {};", module);
+            continue;
+        }
         if module.starts_with("wrapper_") {
             continue;
         }
@@ -71,8 +75,8 @@ pub fn generate_files<T: AsRef<Path> + Debug>(includes: &[T], files: &[T], out_d
             )
             .unwrap();
         }
-        for _ in (0..level).rev() {
-            writeln!(f, "{:1$}}}", "", level).unwrap();
+        for l in (0..level).rev() {
+            writeln!(f, "{:1$}}}", "", l).unwrap();
         }
     }
 }
