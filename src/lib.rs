@@ -80,11 +80,11 @@ mod protobuf_imps {
     use regex::Regex;
     use std::env;
     use std::fmt::Debug;
+    use std::fs::{self, File};
+    use std::io::{Read, Write};
     use std::path::Path;
     use std::process::Command;
     use std::str::from_utf8;
-    use std::io::{Read, Write};
-    use std::fs::{self, File};
 
     pub fn get_protoc() -> String {
         let protoc_bin_name = match (env::consts::OS, env::consts::ARCH) {
@@ -186,7 +186,6 @@ mod protobuf_imps {
     pub fn generate_grpcio(_: &[protobuf::descriptor::FileDescriptorProto], _: &[String], _: &str) {
     }
 
-
     /// Convert protobuf files to use the old way of reading protobuf enums.
     // FIXME: Remove this once stepancheg/rust-protobuf#233 is resolved.
     pub fn replace_read_unknown_fields(out_dir: &str) {
@@ -200,7 +199,7 @@ mod protobuf_imps {
             if path.extension() != Some(std::ffi::OsStr::new("rs")) {
                 continue;
             }
-            
+
             let mut text = String::new();
             let mut f = File::open(&path).unwrap();
             f.read_to_string(&mut text)
