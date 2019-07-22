@@ -30,32 +30,59 @@ lazy_static! {
 }
 
 pub struct Builder {
+    files: Vec<String>,
     includes: Vec<String>,
+    include_black_list: Vec<String>,
     wrapper_opts: GenOpt,
 }
 
 impl Builder {
     pub fn new() -> Builder {
         Builder {
+            files: Vec::new(),
             includes: vec!["include".to_owned(), "proto".to_owned()],
+            include_black_list: vec![
+                "protobuf".to_owned(),
+                "google".to_owned(),
+                "gogoproto".to_owned(),
+            ],
             wrapper_opts: GenOpt::all(),
         }
     }
 
-    /// Generate Rust files from proto files (`files`).
-    pub fn generate<T: Into<String> + Clone>(&self, files: &[T]) {
+    pub fn generate(&self) {
+        assert!(!self.files.is_empty(), "No files specified for generation");
         prep_out_dir();
-        self.generate_files(
-            &files
-                .iter()
-                .map(|t| t.clone().into())
-                .collect::<Vec<String>>(),
-        );
-        generate_mod_files();
+        self.generate_files();
+        self.generate_mod_files();
     }
 
     pub fn wrapper_options(&mut self, wrapper_opts: GenOpt) -> &mut Self {
         self.wrapper_opts = wrapper_opts;
+        self
+    }
+
+    /// Finds proto files to operate on in the `proto_dir` directory.
+    pub fn search_dir_for_protos(&mut self, proto_dir: &str) -> &mut Self {
+        self.files = fs::read_dir(proto_dir)
+            .expect("Couldn't read proto directory")
+            .filter_map(|e| {
+                let e = e.expect("Couldn't list file");
+                if e.file_type().expect("File broken").is_dir() {
+                    None
+                } else {
+                    Some(format!("{}/{}", proto_dir, e.file_name().to_string_lossy()))
+                }
+            })
+            .collect();
+        self
+    }
+
+    pub fn files<T: Into<String> + Clone>(&mut self, files: &[T]) -> &mut Self {
+        self.files = files
+            .iter()
+            .map(|t| t.clone().into())
+            .collect::<Vec<String>>();
         self
     }
 
@@ -68,6 +95,48 @@ impl Builder {
         self.includes.push(include);
         self
     }
+
+    pub fn include_black_list(&mut self, include_black_list: Vec<String>) -> &mut Self {
+        self.include_black_list = include_black_list;
+        self
+    }
+
+    pub fn append_black_listed_include(&mut self, include: String) -> &mut Self {
+        self.include_black_list.push(include);
+        self
+    }
+
+    fn generate_mod_files(&self) {
+        let mut f = File::create(format!("{}/mod.rs", *OUT_DIR)).unwrap();
+
+        let modules = list_rs_files().filter_map(|path| {
+            let name = path.file_stem().unwrap().to_str().unwrap();
+            if name.starts_with("wrapper_")
+                || self.include_black_list.iter().any(|i| name.contains(i))
+            {
+                return None;
+            }
+            Some((name.replace('-', "_"), name.to_owned()))
+        });
+
+        for (module, file_name) in modules {
+            if cfg!(feature = "protobuf-codec") {
+                writeln!(f, "pub mod {};", module).unwrap();
+                continue;
+            }
+
+            let mut level = 0;
+            for part in module.split('.') {
+                writeln!(f, "pub mod {} {{", part).unwrap();
+                level += 1;
+            }
+            writeln!(f, "include!(\"{}.rs\");", file_name,).unwrap();
+            if Path::new(&format!("{}/wrapper_{}.rs", *OUT_DIR, file_name)).exists() {
+                writeln!(f, "include!(\"wrapper_{}.rs\");", file_name,).unwrap();
+            }
+            writeln!(f, "{}", "}\n".repeat(level)).unwrap();
+        }
+    }
 }
 
 fn prep_out_dir() {
@@ -75,36 +144,6 @@ fn prep_out_dir() {
         fs::remove_dir_all(&*OUT_DIR).unwrap();
     }
     fs::create_dir_all(&*OUT_DIR).unwrap();
-}
-
-fn generate_mod_files() {
-    let mut f = File::create(format!("{}/mod.rs", *OUT_DIR)).unwrap();
-
-    let modules = list_rs_files().filter_map(|path| {
-        let name = path.file_stem().unwrap().to_str().unwrap();
-        if name.starts_with("wrapper_") {
-            return None;
-        }
-        Some((name.replace('-', "_"), name.to_owned()))
-    });
-
-    for (module, file_name) in modules {
-        if cfg!(feature = "protobuf-codec") {
-            writeln!(f, "pub mod {};", module).unwrap();
-            continue;
-        }
-
-        let mut level = 0;
-        for part in module.split('.') {
-            writeln!(f, "pub mod {} {{", part).unwrap();
-            level += 1;
-        }
-        writeln!(f, "include!(\"{}.rs\");", file_name,).unwrap();
-        if Path::new(&format!("{}/wrapper_{}.rs", *OUT_DIR, file_name)).exists() {
-            writeln!(f, "include!(\"wrapper_{}.rs\");", file_name,).unwrap();
-        }
-        writeln!(f, "{}", "}\n".repeat(level)).unwrap();
-    }
 }
 
 // List all `.rs` files in `OUT_DIR`.

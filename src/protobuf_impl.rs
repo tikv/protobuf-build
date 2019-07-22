@@ -46,7 +46,7 @@ fn check_protoc_version(protoc: &str) {
 }
 
 impl Builder {
-    pub fn generate_files(&self, files: &[String]) {
+    pub fn generate_files(&self) {
         check_protoc_version(&get_protoc());
         let mut cmd = Command::new(get_protoc());
         let desc_file = format!("{}/mod.desc", *OUT_DIR);
@@ -57,7 +57,7 @@ impl Builder {
             .arg("--include_source_info")
             .arg("-o")
             .arg(&desc_file);
-        for f in files {
+        for f in &self.files {
             cmd.arg(&format!("{}", f));
         }
         println!("executing {:?}", cmd);
@@ -70,7 +70,7 @@ impl Builder {
         let desc: protobuf::descriptor::FileDescriptorSet =
             protobuf::parse_from_bytes(&desc_bytes).unwrap();
         let mut files_to_generate = Vec::new();
-        'outer: for file in files {
+        'outer: for file in &self.files {
             for include in &self.includes {
                 if let Ok(truncated) = Path::new(file).strip_prefix(include) {
                     files_to_generate.push(format!("{}", truncated.display()));
