@@ -1,6 +1,6 @@
 // Copyright 2019 PingCAP, Inc.
 
-use crate::{list_rs_files, Builder, OUT_DIR};
+use crate::Builder;
 use regex::Regex;
 use std::env;
 use std::fs::File;
@@ -49,7 +49,7 @@ impl Builder {
     pub fn generate_files(&self) {
         check_protoc_version(&get_protoc());
         let mut cmd = Command::new(get_protoc());
-        let desc_file = format!("{}/mod.desc", *OUT_DIR);
+        let desc_file = format!("{}/mod.desc", self.out_dir);
         for i in &self.includes {
             cmd.arg(format!("-I{}", i));
         }
@@ -87,57 +87,58 @@ impl Builder {
         protobuf_codegen::gen_and_write(
             desc.get_file(),
             &files_to_generate,
-            &Path::new(&*OUT_DIR),
+            &Path::new(&self.out_dir),
             &protobuf_codegen::Customize::default(),
         )
         .unwrap();
-        generate_grpcio(&desc.get_file(), &files_to_generate);
-        replace_read_unknown_fields();
+        self.generate_grpcio(&desc.get_file(), &files_to_generate);
+        self.replace_read_unknown_fields();
     }
-}
 
-#[cfg(feature = "grpcio-protobuf-codec")]
-fn generate_grpcio(
-    desc: &[protobuf::descriptor::FileDescriptorProto],
-    files_to_generate: &[String],
-) {
-    let output_dir = std::path::Path::new(&*OUT_DIR);
-    let results = grpcio_compiler::codegen::gen(desc, &files_to_generate);
-    for res in results {
-        let out_file = output_dir.join(&res.name);
-        let mut f = std::fs::File::create(&out_file).unwrap();
-        f.write_all(&res.content).unwrap();
+    /// Convert protobuf files to use the old way of reading protobuf enums.
+    // FIXME: Remove this once stepancheg/rust-protobuf#233 is resolved.
+    fn replace_read_unknown_fields(&self) {
+        let regex =
+            Regex::new(r"::protobuf::rt::read_proto3_enum_with_unknown_fields_into\(([^,]+), ([^,]+), &mut ([^,]+), [^\)]+\)\?").unwrap();
+        self.list_rs_files().for_each(|path| {
+            let mut text = String::new();
+            let mut f = File::open(&path).unwrap();
+            f.read_to_string(&mut text)
+                .expect("Couldn't read source file");
+
+            // FIXME Rustfmt bug in string literals
+            #[rustfmt::skip]
+            let text = {
+                regex.replace_all(
+                    &text,
+                    "if $1 == ::protobuf::wire_format::WireTypeVarint {\
+                        $3 = $2.read_enum()?;\
+                    } else {\
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));\
+                    }",
+                )
+            };
+            let mut out = File::create(&path).unwrap();
+            out.write_all(text.as_bytes())
+                .expect("Could not write source file");
+        });
     }
-}
 
-#[cfg(all(feature = "protobuf-codec", not(feature = "grpcio-protobuf-codec")))]
-fn generate_grpcio(_: &[protobuf::descriptor::FileDescriptorProto], _: &[String]) {}
+    #[cfg(feature = "grpcio-protobuf-codec")]
+    fn generate_grpcio(
+        &self,
+        desc: &[protobuf::descriptor::FileDescriptorProto],
+        files_to_generate: &[String],
+    ) {
+        let output_dir = std::path::Path::new(&self.out_dir);
+        let results = grpcio_compiler::codegen::gen(desc, &files_to_generate);
+        for res in results {
+            let out_file = output_dir.join(&res.name);
+            let mut f = std::fs::File::create(&out_file).unwrap();
+            f.write_all(&res.content).unwrap();
+        }
+    }
 
-/// Convert protobuf files to use the old way of reading protobuf enums.
-// FIXME: Remove this once stepancheg/rust-protobuf#233 is resolved.
-fn replace_read_unknown_fields() {
-    let regex =
-        Regex::new(r"::protobuf::rt::read_proto3_enum_with_unknown_fields_into\(([^,]+), ([^,]+), &mut ([^,]+), [^\)]+\)\?").unwrap();
-    list_rs_files().for_each(|path| {
-        let mut text = String::new();
-        let mut f = File::open(&path).unwrap();
-        f.read_to_string(&mut text)
-            .expect("Couldn't read source file");
-
-        // FIXME Rustfmt bug in string literals
-        #[rustfmt::skip]
-        let text = {
-            regex.replace_all(
-                &text,
-                "if $1 == ::protobuf::wire_format::WireTypeVarint {\
-                    $3 = $2.read_enum()?;\
-                } else {\
-                    return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));\
-                }",
-            )
-        };
-        let mut out = File::create(&path).unwrap();
-        out.write_all(text.as_bytes())
-            .expect("Could not write source file");
-    });
+    #[cfg(all(feature = "protobuf-codec", not(feature = "grpcio-protobuf-codec")))]
+    fn generate_grpcio(&self, _: &[protobuf::descriptor::FileDescriptorProto], _: &[String]) {}
 }

@@ -15,24 +15,15 @@ mod protobuf_impl;
 mod prost_impl;
 
 use bitflags::bitflags;
-use lazy_static::lazy_static;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-
-lazy_static! {
-    static ref OUT_DIR: String = {
-        format!(
-            "{}/protos",
-            std::env::var("OUT_DIR").expect("No OUT_DIR defined")
-        )
-    };
-}
 
 pub struct Builder {
     files: Vec<String>,
     includes: Vec<String>,
     include_black_list: Vec<String>,
+    out_dir: String,
     wrapper_opts: GenOpt,
 }
 
@@ -46,13 +37,17 @@ impl Builder {
                 "google".to_owned(),
                 "gogoproto".to_owned(),
             ],
+            out_dir: format!(
+                "{}/protos",
+                std::env::var("OUT_DIR").expect("No OUT_DIR defined")
+            ),
             wrapper_opts: GenOpt::all(),
         }
     }
 
     pub fn generate(&self) {
         assert!(!self.files.is_empty(), "No files specified for generation");
-        prep_out_dir();
+        self.prep_out_dir();
         self.generate_files();
         self.generate_mod_file();
     }
@@ -106,10 +101,15 @@ impl Builder {
         self
     }
 
-    fn generate_mod_file(&self) {
-        let mut f = File::create(format!("{}/mod.rs", *OUT_DIR)).unwrap();
+    pub fn out_dir(&mut self, out_dir: String) -> &mut Self {
+        self.out_dir = out_dir;
+        self
+    }
 
-        let modules = list_rs_files().filter_map(|path| {
+    fn generate_mod_file(&self) {
+        let mut f = File::create(format!("{}/mod.rs", self.out_dir)).unwrap();
+
+        let modules = self.list_rs_files().filter_map(|path| {
             let name = path.file_stem().unwrap().to_str().unwrap();
             if name.starts_with("wrapper_")
                 || name == "mod"
@@ -132,11 +132,32 @@ impl Builder {
                 level += 1;
             }
             writeln!(f, "include!(\"{}.rs\");", file_name,).unwrap();
-            if Path::new(&format!("{}/wrapper_{}.rs", *OUT_DIR, file_name)).exists() {
+            if Path::new(&format!("{}/wrapper_{}.rs", self.out_dir, file_name)).exists() {
                 writeln!(f, "include!(\"wrapper_{}.rs\");", file_name,).unwrap();
             }
             writeln!(f, "{}", "}\n".repeat(level)).unwrap();
         }
+    }
+
+    fn prep_out_dir(&self) {
+        if Path::new(&self.out_dir).exists() {
+            fs::remove_dir_all(&self.out_dir).unwrap();
+        }
+        fs::create_dir_all(&self.out_dir).unwrap();
+    }
+
+    // List all `.rs` files in `self.out_dir`.
+    fn list_rs_files(&self) -> impl Iterator<Item = PathBuf> {
+        fs::read_dir(&self.out_dir)
+            .expect("Couldn't read directory")
+            .filter_map(|e| {
+                let path = e.expect("Couldn't list file").path();
+                if path.extension() == Some(std::ffi::OsStr::new("rs")) {
+                    Some(path)
+                } else {
+                    None
+                }
+            })
     }
 }
 
@@ -144,27 +165,6 @@ impl Default for Builder {
     fn default() -> Builder {
         Builder::new()
     }
-}
-
-fn prep_out_dir() {
-    if Path::new(&*OUT_DIR).exists() {
-        fs::remove_dir_all(&*OUT_DIR).unwrap();
-    }
-    fs::create_dir_all(&*OUT_DIR).unwrap();
-}
-
-// List all `.rs` files in `OUT_DIR`.
-fn list_rs_files() -> impl Iterator<Item = PathBuf> {
-    fs::read_dir(&*OUT_DIR)
-        .expect("Couldn't read directory")
-        .filter_map(|e| {
-            let path = e.expect("Couldn't list file").path();
-            if path.extension() == Some(std::ffi::OsStr::new("rs")) {
-                Some(path)
-            } else {
-                None
-            }
-        })
 }
 
 bitflags! {
