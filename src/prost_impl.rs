@@ -1,21 +1,35 @@
 use super::wrapper::GenOpt;
+use crate::OUT_DIR;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
-pub fn rustfmt(file_path: &Path) {
-    let output = Command::new("rustfmt")
-        .arg(file_path.to_str().unwrap())
-        .output();
-    if !output.map(|o| o.status.success()).unwrap_or(false) {
-        eprintln!("Rustfmt failed");
+pub fn generate<T: AsRef<Path>>(includes: &[T], files: &[T]) {
+    #[cfg(feature = "grpcio-prost-codec")]
+    {
+        grpcio_compiler::prost_codegen::compile_protos(files, includes, &*OUT_DIR).unwrap();
     }
+    #[cfg(not(feature = "grpcio-prost-codec"))]
+    {
+        prost_build::Config::new()
+            .out_dir(&*OUT_DIR)
+            .compile_protos(files, includes)
+            .unwrap();
+    }
+
+    let mod_names = module_names_for_dir(&*OUT_DIR);
+    generate_wrappers(
+        &mod_names
+            .iter()
+            .map(|m| format!("{}/{}.rs", *OUT_DIR, m))
+            .collect::<Vec<_>>(),
+        GenOpt::all(),
+    );
 }
 
-pub fn generate_wrappers<T: AsRef<str>>(file_names: &[T], out_dir: &str, gen_opt: GenOpt) {
+fn generate_wrappers<T: AsRef<str>>(file_names: &[T], gen_opt: GenOpt) {
     for file in file_names {
         let gen = super::wrapper::WrapperGen::new(file.as_ref(), gen_opt);
-        gen.write(out_dir);
+        gen.write();
     }
 }
 
@@ -23,7 +37,7 @@ pub fn generate_wrappers<T: AsRef<str>>(file_names: &[T], out_dir: &str, gen_opt
 ///
 /// Note that this does not read the files so will miss inline modules, it only
 /// looks at filenames,
-pub fn module_names_for_dir(directory_name: &str) -> Vec<String> {
+fn module_names_for_dir(directory_name: &str) -> Vec<String> {
     let mut mod_names: Vec<_> = fs::read_dir(directory_name)
         .expect("Couldn't read directory")
         .filter_map(|e| {

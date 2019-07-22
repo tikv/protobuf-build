@@ -1,4 +1,3 @@
-use crate::rustfmt;
 use bitflags::bitflags;
 use quote::ToTokens;
 use std::fs::{self, File};
@@ -64,15 +63,14 @@ impl WrapperGen {
         }
     }
 
-    pub fn write(&self, out_dir: &str) {
+    pub fn write(&self) {
         let mut path = PathBuf::new();
-        path.push(out_dir);
+        path.push(&*crate::OUT_DIR);
         path.push(&self.name);
         {
             let mut out = BufWriter::new(File::create(&path).expect("Could not create file"));
             self.generate(&mut out).expect("Error generating code");
         }
-        rustfmt(&path);
     }
 
     fn generate<W>(&self, buf: &mut W) -> Result<(), io::Error>

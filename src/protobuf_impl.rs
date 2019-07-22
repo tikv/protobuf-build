@@ -1,5 +1,6 @@
 // Copyright 2019 PingCAP, Inc.
 
+use crate::OUT_DIR;
 use regex::Regex;
 use std::env;
 use std::fmt::Debug;
@@ -9,7 +10,7 @@ use std::path::Path;
 use std::process::Command;
 use std::str::from_utf8;
 
-pub fn get_protoc() -> String {
+fn get_protoc() -> String {
     let protoc_bin_name = match (env::consts::OS, env::consts::ARCH) {
         ("linux", "x86") => "protoc-linux-x86_32",
         ("linux", "x86_64") => "protoc-linux-x86_64",
@@ -26,7 +27,7 @@ pub fn get_protoc() -> String {
 }
 
 /// Check that the user's installed version of the protobuf compiler is 3.1.x.
-pub fn check_protoc_version(protoc: &str) {
+fn check_protoc_version(protoc: &str) {
     let ver_re = Regex::new(r"([0-9]+)\.([0-9]+)\.[0-9]").unwrap();
     let ver = Command::new(protoc)
         .arg("--version")
@@ -42,10 +43,10 @@ pub fn check_protoc_version(protoc: &str) {
         );
     }
 }
-pub fn generate<T: AsRef<Path> + Debug>(includes: &[T], files: &[T], out_dir: &str) {
+pub fn generate<T: AsRef<Path> + Debug>(includes: &[T], files: &[T]) {
     check_protoc_version(&get_protoc());
     let mut cmd = Command::new(get_protoc());
-    let desc_file = format!("{}/mod.desc", out_dir);
+    let desc_file = format!("{}/mod.desc", *OUT_DIR);
     for i in includes {
         cmd.arg(format!("-I{}", i.as_ref().display()));
     }
@@ -80,23 +81,22 @@ pub fn generate<T: AsRef<Path> + Debug>(includes: &[T], files: &[T], out_dir: &s
     protobuf_codegen::gen_and_write(
         desc.get_file(),
         &files_to_generate,
-        &Path::new(out_dir),
+        &Path::new(&*OUT_DIR),
         &protobuf_codegen::Customize::default(),
     )
     .unwrap();
-    generate_grpcio(&desc.get_file(), &files_to_generate, out_dir);
-    replace_read_unknown_fields(out_dir);
+    generate_grpcio(&desc.get_file(), &files_to_generate);
+    replace_read_unknown_fields();
 }
 
 #[cfg(feature = "grpcio-protobuf-codec")]
-pub fn generate_grpcio(
+fn generate_grpcio(
     desc: &[protobuf::descriptor::FileDescriptorProto],
     files_to_generate: &[String],
-    out_dir: &str,
 ) {
     use std::io::Write;
 
-    let output_dir = std::path::Path::new(out_dir);
+    let output_dir = std::path::Path::new(&*OUT_DIR);
     let results = grpcio_compiler::codegen::gen(desc, &files_to_generate);
     for res in results {
         let out_file = output_dir.join(&res.name);
@@ -106,17 +106,17 @@ pub fn generate_grpcio(
 }
 
 #[cfg(all(feature = "protobuf-codec", not(feature = "grpcio-protobuf-codec")))]
-pub fn generate_grpcio(_: &[protobuf::descriptor::FileDescriptorProto], _: &[String], _: &str) {}
+fn generate_grpcio(_: &[protobuf::descriptor::FileDescriptorProto], _: &[String]) {}
 
 /// Convert protobuf files to use the old way of reading protobuf enums.
 // FIXME: Remove this once stepancheg/rust-protobuf#233 is resolved.
-pub fn replace_read_unknown_fields(out_dir: &str) {
+fn replace_read_unknown_fields() {
     let regex =
         Regex::new(r"::protobuf::rt::read_proto3_enum_with_unknown_fields_into\(([^,]+), ([^,]+), &mut ([^,]+), [^\)]+\)\?").unwrap();
-    for f in fs::read_dir(out_dir).unwrap() {
+    for f in fs::read_dir(&*OUT_DIR).unwrap() {
         let path = match f {
             Ok(p) => p.path(),
-            Err(e) => panic!("failed to list {}: {:?}", out_dir, e),
+            Err(e) => panic!("failed to list {}: {:?}", *OUT_DIR, e),
         };
         if path.extension() != Some(std::ffi::OsStr::new("rs")) {
             continue;
