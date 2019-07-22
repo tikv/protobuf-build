@@ -242,34 +242,20 @@ mod protobuf_imps {
 pub use protobuf_imps::*;
 
 /// Use prost to generate Rust files from proto files (`files`).
-#[cfg(all(feature = "prost-codec", not(feature = "grpcio-prost-codec")))]
+#[cfg(feature = "prost-codec")]
 pub fn generate<T: AsRef<Path>>(includes: &[T], files: &[T], out_dir: &str) {
-    prost_build::Config::new()
-        .out_dir(out_dir)
-        .compile_protos(files, includes)
-        .unwrap();
-    let mod_names = module_names_for_dir(out_dir);
-    generate_wrappers(
-        &mod_names
-            .iter()
-            .map(|m| format!("{}/{}.rs", out_dir, m))
-            .collect::<Vec<_>>(),
-        out_dir,
-        GenOpt::all(),
-    );
-}
-
-/// TODO: merge this with prost-codec.
-#[cfg(feature = "grpcio-prost-codec")]
-pub fn generate<T: AsRef<Path>>(includes: &[T], files: &[T], out_dir: &str) {
-    let packages =
+    #[cfg(feature = "grpcio-prost-codec")]
+    {
         grpcio_compiler::prost_codegen::compile_protos(files, includes, out_dir).unwrap();
-    for package in &packages {
-        let mut file_name = std::path::PathBuf::new();
-        file_name.push(out_dir);
-        file_name.push(&format!("{}.rs", package));
-        rustfmt(&file_name);
     }
+    #[cfg(not(feature = "grpcio-prost-codec"))]
+    {
+        prost_build::Config::new()
+            .out_dir(out_dir)
+            .compile_protos(files, includes)
+            .unwrap();
+    }
+
     let mod_names = module_names_for_dir(out_dir);
     generate_wrappers(
         &mod_names

@@ -10,7 +10,7 @@ description = "Utility functions for generating Rust code from protobufs (using 
 default = ["protobuf-codec"]
 protobuf-codec = ["protobuf-codegen", "protobuf"]
 grpcio-protobuf-codec = ["grpcio-compiler/protobuf-codec", "protobuf-codec"]
-prost-codec = ["grpcio-compiler/prost-codec", "syn", "quote", "bitflags", "prost-build"]
+prost-codec = ["syn", "quote", "bitflags", "prost-build"]
 grpcio-prost-codec = ["grpcio-compiler/prost-codec", "prost-codec"]
 
 [dependencies]
