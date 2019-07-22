@@ -1,9 +1,8 @@
 // Copyright 2019 PingCAP, Inc.
 
-use crate::{list_rs_files, OUT_DIR};
+use crate::{list_rs_files, Builder, OUT_DIR};
 use regex::Regex;
 use std::env;
-use std::fmt::Debug;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
@@ -45,50 +44,56 @@ fn check_protoc_version(protoc: &str) {
         );
     }
 }
-pub fn generate<T: AsRef<Path> + Debug>(includes: &[T], files: &[T]) {
-    check_protoc_version(&get_protoc());
-    let mut cmd = Command::new(get_protoc());
-    let desc_file = format!("{}/mod.desc", *OUT_DIR);
-    for i in includes {
-        cmd.arg(format!("-I{}", i.as_ref().display()));
-    }
-    cmd.arg("--include_imports")
-        .arg("--include_source_info")
-        .arg("-o")
-        .arg(&desc_file);
-    for f in files {
-        cmd.arg(&format!("{}", f.as_ref().display()));
-    }
-    println!("executing {:?}", cmd);
-    match cmd.status() {
-        Ok(e) if e.success() => {}
-        e => panic!("failed to generate descriptor set files: {:?}", e),
-    }
 
-    let desc_bytes = std::fs::read(&desc_file).unwrap();
-    let desc: protobuf::descriptor::FileDescriptorSet =
-        protobuf::parse_from_bytes(&desc_bytes).unwrap();
-    let mut files_to_generate = Vec::new();
-    'outer: for file in files {
-        for include in includes {
-            if let Ok(truncated) = file.as_ref().strip_prefix(include) {
-                files_to_generate.push(format!("{}", truncated.display()));
-                continue 'outer;
-            }
+impl Builder {
+    pub fn generate_files(&self, files: &[String]) {
+        check_protoc_version(&get_protoc());
+        let mut cmd = Command::new(get_protoc());
+        let desc_file = format!("{}/mod.desc", *OUT_DIR);
+        for i in &self.includes {
+            cmd.arg(format!("-I{}", i));
+        }
+        cmd.arg("--include_imports")
+            .arg("--include_source_info")
+            .arg("-o")
+            .arg(&desc_file);
+        for f in files {
+            cmd.arg(&format!("{}", f));
+        }
+        println!("executing {:?}", cmd);
+        match cmd.status() {
+            Ok(e) if e.success() => {}
+            e => panic!("failed to generate descriptor set files: {:?}", e),
         }
 
-        panic!("file {:?} is not found in includes {:?}", file, includes);
-    }
+        let desc_bytes = std::fs::read(&desc_file).unwrap();
+        let desc: protobuf::descriptor::FileDescriptorSet =
+            protobuf::parse_from_bytes(&desc_bytes).unwrap();
+        let mut files_to_generate = Vec::new();
+        'outer: for file in files {
+            for include in &self.includes {
+                if let Ok(truncated) = Path::new(file).strip_prefix(include) {
+                    files_to_generate.push(format!("{}", truncated.display()));
+                    continue 'outer;
+                }
+            }
 
-    protobuf_codegen::gen_and_write(
-        desc.get_file(),
-        &files_to_generate,
-        &Path::new(&*OUT_DIR),
-        &protobuf_codegen::Customize::default(),
-    )
-    .unwrap();
-    generate_grpcio(&desc.get_file(), &files_to_generate);
-    replace_read_unknown_fields();
+            panic!(
+                "file {:?} is not found in includes {:?}",
+                file, self.includes
+            );
+        }
+
+        protobuf_codegen::gen_and_write(
+            desc.get_file(),
+            &files_to_generate,
+            &Path::new(&*OUT_DIR),
+            &protobuf_codegen::Customize::default(),
+        )
+        .unwrap();
+        generate_grpcio(&desc.get_file(), &files_to_generate);
+        replace_read_unknown_fields();
+    }
 }
 
 #[cfg(feature = "grpcio-protobuf-codec")]

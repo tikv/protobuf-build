@@ -7,21 +7,15 @@
 
 #[cfg(feature = "prost-codec")]
 mod wrapper;
-#[cfg(feature = "prost-codec")]
-pub use crate::wrapper::GenOpt;
 
 #[cfg(feature = "protobuf-codec")]
 mod protobuf_impl;
-#[cfg(feature = "protobuf-codec")]
-use protobuf_impl::generate;
 
 #[cfg(feature = "prost-codec")]
 mod prost_impl;
-#[cfg(feature = "prost-codec")]
-use prost_impl::generate;
 
+use bitflags::bitflags;
 use lazy_static::lazy_static;
-use std::fmt::Debug;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -35,11 +29,45 @@ lazy_static! {
     };
 }
 
-/// Generate Rust files from proto files (`files`).
-pub fn generate_files<T: AsRef<Path> + Debug>(includes: &[T], files: &[T]) {
-    prep_out_dir();
-    generate(includes, files);
-    generate_mod_files();
+pub struct Builder {
+    includes: Vec<String>,
+    wrapper_opts: GenOpt,
+}
+
+impl Builder {
+    pub fn new() -> Builder {
+        Builder {
+            includes: vec!["include".to_owned(), "proto".to_owned()],
+            wrapper_opts: GenOpt::all(),
+        }
+    }
+
+    /// Generate Rust files from proto files (`files`).
+    pub fn generate<T: Into<String> + Clone>(&self, files: &[T]) {
+        prep_out_dir();
+        self.generate_files(
+            &files
+                .iter()
+                .map(|t| t.clone().into())
+                .collect::<Vec<String>>(),
+        );
+        generate_mod_files();
+    }
+
+    pub fn wrapper_options(&mut self, wrapper_opts: GenOpt) -> &mut Self {
+        self.wrapper_opts = wrapper_opts;
+        self
+    }
+
+    pub fn includes(&mut self, includes: Vec<String>) -> &mut Self {
+        self.includes = includes;
+        self
+    }
+
+    pub fn append_include(&mut self, include: String) -> &mut Self {
+        self.includes.push(include);
+        self
+    }
 }
 
 fn prep_out_dir() {
@@ -91,4 +119,37 @@ fn list_rs_files() -> impl Iterator<Item = PathBuf> {
                 None
             }
         })
+}
+
+bitflags! {
+    pub struct GenOpt: u32 {
+        /// Generate implementation for trait `::protobuf::Message`.
+        const MESSAGE = 0b0000_0001;
+        /// Generate getters.
+        const TRIVIAL_GET = 0b0000_0010;
+        /// Generate setters.
+        const TRIVIAL_SET = 0b0000_0100;
+        /// Generate the `new_` constructors.
+        const NEW = 0b0000_1000;
+        /// Generate `clear_*` functions.
+        const CLEAR = 0b0001_0000;
+        /// Generate `has_*` functions.
+        const HAS = 0b0010_0000;
+        /// Generate mutable getters.
+        const MUT = 0b0100_0000;
+        /// Generate `take_*` functions.
+        const TAKE = 0b1000_0000;
+        /// Except `impl protobuf::Message`.
+        const NO_MSG = Self::TRIVIAL_GET.bits
+         | Self::TRIVIAL_SET.bits
+         | Self::CLEAR.bits
+         | Self::HAS.bits
+         | Self::MUT.bits
+         | Self::TAKE.bits;
+        /// Except `new_` and `impl protobuf::Message`.
+        const ACCESSOR = Self::TRIVIAL_GET.bits
+         | Self::TRIVIAL_SET.bits
+         | Self::MUT.bits
+         | Self::TAKE.bits;
+    }
 }
