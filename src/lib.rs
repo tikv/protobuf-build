@@ -54,7 +54,7 @@ impl Builder {
         assert!(!self.files.is_empty(), "No files specified for generation");
         prep_out_dir();
         self.generate_files();
-        self.generate_mod_files();
+        self.generate_mod_file();
     }
 
     pub fn wrapper_options(&mut self, wrapper_opts: GenOpt) -> &mut Self {
@@ -106,12 +106,13 @@ impl Builder {
         self
     }
 
-    fn generate_mod_files(&self) {
+    fn generate_mod_file(&self) {
         let mut f = File::create(format!("{}/mod.rs", *OUT_DIR)).unwrap();
 
         let modules = list_rs_files().filter_map(|path| {
             let name = path.file_stem().unwrap().to_str().unwrap();
             if name.starts_with("wrapper_")
+                || name == "mod"
                 || self.include_black_list.iter().any(|i| name.contains(i))
             {
                 return None;
@@ -136,6 +137,12 @@ impl Builder {
             }
             writeln!(f, "{}", "}\n".repeat(level)).unwrap();
         }
+    }
+}
+
+impl Default for Builder {
+    fn default() -> Builder {
+        Builder::new()
     }
 }
 

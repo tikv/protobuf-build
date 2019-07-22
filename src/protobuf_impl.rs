@@ -58,7 +58,7 @@ impl Builder {
             .arg("-o")
             .arg(&desc_file);
         for f in &self.files {
-            cmd.arg(&format!("{}", f));
+            cmd.arg(f);
         }
         println!("executing {:?}", cmd);
         match cmd.status() {
@@ -101,8 +101,6 @@ fn generate_grpcio(
     desc: &[protobuf::descriptor::FileDescriptorProto],
     files_to_generate: &[String],
 ) {
-    use std::io::Write;
-
     let output_dir = std::path::Path::new(&*OUT_DIR);
     let results = grpcio_compiler::codegen::gen(desc, &files_to_generate);
     for res in results {
