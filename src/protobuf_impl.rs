@@ -1,15 +1,17 @@
 // Copyright 2019 PingCAP, Inc.
 
-use crate::OUT_DIR;
+use crate::{list_rs_files, OUT_DIR};
 use regex::Regex;
 use std::env;
 use std::fmt::Debug;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::Command;
 use std::str::from_utf8;
 
+// For preference we use the protoc from bin which we bundle with the crate. If
+// there is not one suitable for the platform, then we try system protoc.
 fn get_protoc() -> String {
     let protoc_bin_name = match (env::consts::OS, env::consts::ARCH) {
         ("linux", "x86") => "protoc-linux-x86_32",
@@ -23,7 +25,7 @@ fn get_protoc() -> String {
     let bin_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("bin")
         .join(protoc_bin_name);
-    format!("{}", bin_path.display())
+    bin_path.display().to_string()
 }
 
 /// Check that the user's installed version of the protobuf compiler is 3.1.x.
@@ -113,15 +115,7 @@ fn generate_grpcio(_: &[protobuf::descriptor::FileDescriptorProto], _: &[String]
 fn replace_read_unknown_fields() {
     let regex =
         Regex::new(r"::protobuf::rt::read_proto3_enum_with_unknown_fields_into\(([^,]+), ([^,]+), &mut ([^,]+), [^\)]+\)\?").unwrap();
-    for f in fs::read_dir(&*OUT_DIR).unwrap() {
-        let path = match f {
-            Ok(p) => p.path(),
-            Err(e) => panic!("failed to list {}: {:?}", *OUT_DIR, e),
-        };
-        if path.extension() != Some(std::ffi::OsStr::new("rs")) {
-            continue;
-        }
-
+    list_rs_files().for_each(|path| {
         let mut text = String::new();
         let mut f = File::open(&path).unwrap();
         f.read_to_string(&mut text)
@@ -142,5 +136,5 @@ fn replace_read_unknown_fields() {
         let mut out = File::create(&path).unwrap();
         out.write_all(text.as_bytes())
             .expect("Could not write source file");
-    }
+    });
 }

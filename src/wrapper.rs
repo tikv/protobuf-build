@@ -1,3 +1,5 @@
+// Copyright 2019 PingCAP, Inc.
+
 use bitflags::bitflags;
 use quote::ToTokens;
 use std::fs::{self, File};
@@ -43,34 +45,31 @@ bitflags! {
 
 pub struct WrapperGen {
     input: String,
-    name: String,
+    input_file: PathBuf,
     gen_opt: GenOpt,
 }
 
 impl WrapperGen {
-    pub fn new(file_name: &str, gen_opt: GenOpt) -> WrapperGen {
+    pub fn new(file_name: PathBuf, gen_opt: GenOpt) -> WrapperGen {
         let input = String::from_utf8(
-            fs::read(file_name).unwrap_or_else(|_| panic!("Could not read {}", file_name)),
+            fs::read(&file_name).unwrap_or_else(|_| panic!("Could not read {:?}", file_name)),
         )
         .expect("File not utf8");
         WrapperGen {
             input,
             gen_opt,
-            name: format!(
-                "wrapper_{}",
-                &file_name[file_name.rfind('/').map(|i| i + 1).unwrap_or(0)..]
-            ),
+            input_file: file_name,
         }
     }
 
     pub fn write(&self) {
-        let mut path = PathBuf::new();
-        path.push(&*crate::OUT_DIR);
-        path.push(&self.name);
-        {
-            let mut out = BufWriter::new(File::create(&path).expect("Could not create file"));
-            self.generate(&mut out).expect("Error generating code");
-        }
+        let mut path = self.input_file.clone();
+        path.set_file_name(format!(
+            "wrapper_{}",
+            path.file_name().unwrap().to_str().unwrap()
+        ));
+        let mut out = BufWriter::new(File::create(&path).expect("Could not create file"));
+        self.generate(&mut out).expect("Error generating code");
     }
 
     fn generate<W>(&self, buf: &mut W) -> Result<(), io::Error>
