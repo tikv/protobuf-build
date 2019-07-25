@@ -22,8 +22,9 @@ use std::path::{Path, PathBuf};
 pub struct Builder {
     files: Vec<String>,
     includes: Vec<String>,
-    include_black_list: Vec<String>,
+    black_list: Vec<String>,
     out_dir: String,
+    #[allow(dead_code)]
     wrapper_opts: GenOpt,
 }
 
@@ -32,7 +33,7 @@ impl Builder {
         Builder {
             files: Vec::new(),
             includes: vec!["include".to_owned(), "proto".to_owned()],
-            include_black_list: vec![
+            black_list: vec![
                 "protobuf".to_owned(),
                 "google".to_owned(),
                 "gogoproto".to_owned(),
@@ -52,6 +53,7 @@ impl Builder {
         self.generate_mod_file();
     }
 
+    #[cfg(feature = "prost-codec")]
     pub fn wrapper_options(&mut self, wrapper_opts: GenOpt) -> &mut Self {
         self.wrapper_opts = wrapper_opts;
         self
@@ -73,36 +75,37 @@ impl Builder {
         self
     }
 
-    pub fn files<T: Into<String> + Clone>(&mut self, files: &[T]) -> &mut Self {
-        self.files = files
-            .iter()
-            .map(|t| t.clone().into())
-            .collect::<Vec<String>>();
+    pub fn files<T: ToString>(&mut self, files: &[T]) -> &mut Self {
+        self.files = files.iter().map(|t| t.to_string()).collect();
         self
     }
 
-    pub fn includes(&mut self, includes: Vec<String>) -> &mut Self {
-        self.includes = includes;
+    pub fn includes<T: ToString>(&mut self, includes: &[T]) -> &mut Self {
+        self.includes = includes.iter().map(|t| t.to_string()).collect();
         self
     }
 
-    pub fn append_include(&mut self, include: String) -> &mut Self {
-        self.includes.push(include);
+    pub fn append_include(&mut self, include: impl Into<String>) -> &mut Self {
+        self.includes.push(include.into());
         self
     }
 
-    pub fn include_black_list(&mut self, include_black_list: Vec<String>) -> &mut Self {
-        self.include_black_list = include_black_list;
+    pub fn black_list<T: ToString>(&mut self, black_list: &[T]) -> &mut Self {
+        self.black_list = black_list.iter().map(|t| t.to_string()).collect();
         self
     }
 
-    pub fn append_black_listed_include(&mut self, include: String) -> &mut Self {
-        self.include_black_list.push(include);
+    /// Add the name of an include file to the builder's black list.
+    ///
+    /// Files named on the black list are not made modules of the generated
+    /// program.
+    pub fn append_to_black_list(&mut self, include: impl Into<String>) -> &mut Self {
+        self.black_list.push(include.into());
         self
     }
 
-    pub fn out_dir(&mut self, out_dir: String) -> &mut Self {
-        self.out_dir = out_dir;
+    pub fn out_dir(&mut self, out_dir: impl Into<String>) -> &mut Self {
+        self.out_dir = out_dir.into();
         self
     }
 
@@ -113,7 +116,7 @@ impl Builder {
             let name = path.file_stem().unwrap().to_str().unwrap();
             if name.starts_with("wrapper_")
                 || name == "mod"
-                || self.include_black_list.iter().any(|i| name.contains(i))
+                || self.black_list.iter().any(|i| name.contains(i))
             {
                 return None;
             }
