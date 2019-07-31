@@ -1,15 +1,4 @@
 // Copyright 2019 PingCAP, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// See the License for the specific language governing permissions and
-// limitations under the License.
 
 //! Utility functions for generating Rust code from protobuf specifications.
 //!
@@ -17,318 +6,199 @@
 //! scripts, not in production.
 
 #[cfg(feature = "prost-codec")]
-pub use crate::wrapper::GenOpt;
-use std::fmt::Debug;
-use std::fs::{self, File};
-use std::io::Write;
-use std::path::Path;
-
-#[cfg(feature = "prost-codec")]
 mod wrapper;
 
-/// Generate Rust files from proto files (`files`).
-pub fn generate_files<T: AsRef<Path> + Debug>(includes: &[T], files: &[T], out_dir: &str) {
-    if Path::new(&out_dir).exists() {
-        fs::remove_dir_all(&out_dir).unwrap();
-    }
-    fs::create_dir_all(&out_dir).unwrap();
-    generate(includes, files, out_dir);
-    let mut generated = Vec::new();
-    let modules: Vec<_> = fs::read_dir(out_dir)
-        .unwrap()
-        .filter_map(|res| {
-            let path = match res {
-                Ok(e) => e.path(),
-                Err(e) => panic!("failed to list {}: {:?}", out_dir, e),
-            };
-            if path.extension() == Some(std::ffi::OsStr::new("rs")) {
-                generated.push(format!("{}", path.display()));
-                let name = path.file_stem().unwrap().to_str().unwrap();
-                Some((name.replace('-', "_"), name.to_owned()))
-            } else {
-                None
-            }
-        })
-        .collect();
-    let mut f = File::create(format!("{}/mod.rs", out_dir)).unwrap();
-    for (module, file_name) in &modules {
-        if cfg!(feature = "protobuf-codec") {
-            writeln!(f, "pub mod {};", module).unwrap();
-            continue;
-        }
-        if module.starts_with("wrapper_") {
-            continue;
-        }
-        let mut level = 0;
-        for part in module.split('.') {
-            writeln!(f, "{:level$}pub mod {} {{", "", part, level = level).unwrap();
-            level += 1;
-        }
-        writeln!(
-            f,
-            "{:level$}include!(\"{}.rs\");",
-            "",
-            file_name,
-            level = level
-        )
-        .unwrap();
-        if Path::new(&format!("{}/wrapper_{}.rs", out_dir, file_name)).exists() {
-            writeln!(
-                f,
-                "{:level$}include!(\"wrapper_{}.rs\");",
-                "",
-                file_name,
-                level = level
-            )
-            .unwrap();
-        }
-        for l in (0..level).rev() {
-            writeln!(f, "{:1$}}}", "", l).unwrap();
-        }
-    }
+#[cfg(feature = "protobuf-codec")]
+mod protobuf_impl;
+
+#[cfg(feature = "prost-codec")]
+mod prost_impl;
+
+use bitflags::bitflags;
+use std::fs::{self, File};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
+pub struct Builder {
+    files: Vec<String>,
+    includes: Vec<String>,
+    black_list: Vec<String>,
+    out_dir: String,
+    #[allow(dead_code)]
+    wrapper_opts: GenOpt,
 }
 
-/// Use rust-protobuf to generate Rust files from proto files (`files`).
-#[cfg(feature = "protobuf-codec")]
-mod protobuf_imps {
-    use regex::Regex;
-    use std::env;
-    use std::fmt::Debug;
-    use std::fs::{self, File};
-    use std::io::{Read, Write};
-    use std::path::Path;
-    use std::process::Command;
-    use std::str::from_utf8;
-
-    pub fn get_protoc() -> String {
-        let protoc_bin_name = match (env::consts::OS, env::consts::ARCH) {
-            ("linux", "x86") => "protoc-linux-x86_32",
-            ("linux", "x86_64") => "protoc-linux-x86_64",
-            ("linux", "aarch64") => "protoc-linux-aarch_64",
-            ("linux", "ppcle64") => "protoc-linux-ppcle_64",
-            ("macos", "x86_64") => "protoc-osx-x86_64",
-            ("windows", _) => "protoc-win32.exe",
-            _ => return "protoc".to_owned(),
-        };
-        let bin_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("bin")
-            .join(protoc_bin_name);
-        format!("{}", bin_path.display())
-    }
-
-    /// Check that the user's installed version of the protobuf compiler is 3.1.x.
-    pub fn check_protoc_version(protoc: &str) {
-        let ver_re = Regex::new(r"([0-9]+)\.([0-9]+)\.[0-9]").unwrap();
-        let ver = Command::new(protoc)
-            .arg("--version")
-            .output()
-            .expect("Program `protoc` not installed (is it in PATH?).");
-        let caps = ver_re.captures(from_utf8(&ver.stdout).unwrap()).unwrap();
-        let major = caps.get(1).unwrap().as_str().parse::<i16>().unwrap();
-        let minor = caps.get(2).unwrap().as_str().parse::<i16>().unwrap();
-        if major == 3 && minor < 1 || major < 3 {
-            panic!(
-                "Invalid version of protoc (required at least 3.1.x, get {}.{}.x).",
-                major, minor,
-            );
+impl Builder {
+    pub fn new() -> Builder {
+        Builder {
+            files: Vec::new(),
+            includes: vec!["include".to_owned(), "proto".to_owned()],
+            black_list: vec![
+                "protobuf".to_owned(),
+                "google".to_owned(),
+                "gogoproto".to_owned(),
+            ],
+            out_dir: format!(
+                "{}/protos",
+                std::env::var("OUT_DIR").expect("No OUT_DIR defined")
+            ),
+            wrapper_opts: GenOpt::all(),
         }
     }
-    pub fn generate<T: AsRef<Path> + Debug>(includes: &[T], files: &[T], out_dir: &str) {
-        check_protoc_version(&get_protoc());
-        let mut cmd = Command::new(get_protoc());
-        let desc_file = format!("{}/mod.desc", out_dir);
-        for i in includes {
-            cmd.arg(format!("-I{}", i.as_ref().display()));
-        }
-        cmd.arg("--include_imports")
-            .arg("--include_source_info")
-            .arg("-o")
-            .arg(&desc_file);
-        for f in files {
-            cmd.arg(&format!("{}", f.as_ref().display()));
-        }
-        println!("executing {:?}", cmd);
-        match cmd.status() {
-            Ok(e) if e.success() => {}
-            e => panic!("failed to generate descriptor set files: {:?}", e),
-        }
 
-        let desc_bytes = std::fs::read(&desc_file).unwrap();
-        let desc: protobuf::descriptor::FileDescriptorSet =
-            protobuf::parse_from_bytes(&desc_bytes).unwrap();
-        let mut files_to_generate = Vec::new();
-        'outer: for file in files {
-            for include in includes {
-                if let Ok(truncated) = file.as_ref().strip_prefix(include) {
-                    files_to_generate.push(format!("{}", truncated.display()));
-                    continue 'outer;
+    pub fn generate(&self) {
+        assert!(!self.files.is_empty(), "No files specified for generation");
+        self.prep_out_dir();
+        self.generate_files();
+        self.generate_mod_file();
+    }
+
+    #[cfg(feature = "prost-codec")]
+    pub fn wrapper_options(&mut self, wrapper_opts: GenOpt) -> &mut Self {
+        self.wrapper_opts = wrapper_opts;
+        self
+    }
+
+    /// Finds proto files to operate on in the `proto_dir` directory.
+    pub fn search_dir_for_protos(&mut self, proto_dir: &str) -> &mut Self {
+        self.files = fs::read_dir(proto_dir)
+            .expect("Couldn't read proto directory")
+            .filter_map(|e| {
+                let e = e.expect("Couldn't list file");
+                if e.file_type().expect("File broken").is_dir() {
+                    None
+                } else {
+                    Some(format!("{}/{}", proto_dir, e.file_name().to_string_lossy()))
                 }
+            })
+            .collect();
+        self
+    }
+
+    pub fn files<T: ToString>(&mut self, files: &[T]) -> &mut Self {
+        self.files = files.iter().map(|t| t.to_string()).collect();
+        self
+    }
+
+    pub fn includes<T: ToString>(&mut self, includes: &[T]) -> &mut Self {
+        self.includes = includes.iter().map(|t| t.to_string()).collect();
+        self
+    }
+
+    pub fn append_include(&mut self, include: impl Into<String>) -> &mut Self {
+        self.includes.push(include.into());
+        self
+    }
+
+    pub fn black_list<T: ToString>(&mut self, black_list: &[T]) -> &mut Self {
+        self.black_list = black_list.iter().map(|t| t.to_string()).collect();
+        self
+    }
+
+    /// Add the name of an include file to the builder's black list.
+    ///
+    /// Files named on the black list are not made modules of the generated
+    /// program.
+    pub fn append_to_black_list(&mut self, include: impl Into<String>) -> &mut Self {
+        self.black_list.push(include.into());
+        self
+    }
+
+    pub fn out_dir(&mut self, out_dir: impl Into<String>) -> &mut Self {
+        self.out_dir = out_dir.into();
+        self
+    }
+
+    fn generate_mod_file(&self) {
+        let mut f = File::create(format!("{}/mod.rs", self.out_dir)).unwrap();
+
+        let modules = self.list_rs_files().filter_map(|path| {
+            let name = path.file_stem().unwrap().to_str().unwrap();
+            if name.starts_with("wrapper_")
+                || name == "mod"
+                || self.black_list.iter().any(|i| name.contains(i))
+            {
+                return None;
             }
+            Some((name.replace('-', "_"), name.to_owned()))
+        });
 
-            panic!("file {:?} is not found in includes {:?}", file, includes);
-        }
-
-        protobuf_codegen::gen_and_write(
-            desc.get_file(),
-            &files_to_generate,
-            &Path::new(out_dir),
-            &protobuf_codegen::Customize::default(),
-        )
-        .unwrap();
-        generate_grpcio(&desc.get_file(), &files_to_generate, out_dir);
-        replace_read_unknown_fields(out_dir);
-    }
-
-    #[cfg(feature = "grpcio-protobuf-codec")]
-    pub fn generate_grpcio(
-        desc: &[protobuf::descriptor::FileDescriptorProto],
-        files_to_generate: &[String],
-        out_dir: &str,
-    ) {
-        use std::io::Write;
-
-        let output_dir = std::path::Path::new(out_dir);
-        let results = grpcio_compiler::codegen::gen(desc, &files_to_generate);
-        for res in results {
-            let out_file = output_dir.join(&res.name);
-            let mut f = std::fs::File::create(&out_file).unwrap();
-            f.write_all(&res.content).unwrap();
-        }
-    }
-
-    #[cfg(all(feature = "protobuf-codec", not(feature = "grpcio-protobuf-codec")))]
-    pub fn generate_grpcio(_: &[protobuf::descriptor::FileDescriptorProto], _: &[String], _: &str) {
-    }
-
-    /// Convert protobuf files to use the old way of reading protobuf enums.
-    // FIXME: Remove this once stepancheg/rust-protobuf#233 is resolved.
-    pub fn replace_read_unknown_fields(out_dir: &str) {
-        let regex =
-            Regex::new(r"::protobuf::rt::read_proto3_enum_with_unknown_fields_into\(([^,]+), ([^,]+), &mut ([^,]+), [^\)]+\)\?").unwrap();
-        for f in fs::read_dir(out_dir).unwrap() {
-            let path = match f {
-                Ok(p) => p.path(),
-                Err(e) => panic!("failed to list {}: {:?}", out_dir, e),
-            };
-            if path.extension() != Some(std::ffi::OsStr::new("rs")) {
+        for (module, file_name) in modules {
+            if cfg!(feature = "protobuf-codec") {
+                writeln!(f, "pub mod {};", module).unwrap();
                 continue;
             }
 
-            let mut text = String::new();
-            let mut f = File::open(&path).unwrap();
-            f.read_to_string(&mut text)
-                .expect("Couldn't read source file");
-
-            // FIXME Rustfmt bug in string literals
-            #[rustfmt::skip]
-            let text = {
-                regex.replace_all(
-                    &text,
-                    "if $1 == ::protobuf::wire_format::WireTypeVarint {\
-                        $3 = $2.read_enum()?;\
-                    } else {\
-                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));\
-                    }",
-                )
-            };
-            let mut out = File::create(&path).unwrap();
-            out.write_all(text.as_bytes())
-                .expect("Could not write source file");
-        }
-    }
-}
-
-#[cfg(feature = "protobuf-codec")]
-pub use protobuf_imps::*;
-
-/// Use prost to generate Rust files from proto files (`files`).
-#[cfg(all(feature = "prost-codec", not(feature = "grpcio-prost-codec")))]
-pub fn generate<T: AsRef<Path>>(includes: &[T], files: &[T], out_dir: &str) {
-    prost_build::Config::new()
-        .out_dir(out_dir)
-        .compile_protos(files, includes)
-        .unwrap();
-    let mod_names = module_names_for_dir(out_dir);
-    generate_wrappers(
-        &mod_names
-            .iter()
-            .map(|m| format!("{}/{}.rs", out_dir, m))
-            .collect::<Vec<_>>(),
-        out_dir,
-        GenOpt::all(),
-    );
-}
-
-/// TODO: merge this with prost-codec.
-#[cfg(feature = "grpcio-prost-codec")]
-pub fn generate<T: AsRef<Path>>(includes: &[T], files: &[T], out_dir: &str) {
-    let packages =
-        grpcio_compiler::prost_codegen::compile_protos(files, includes, out_dir).unwrap();
-    for package in &packages {
-        let mut file_name = std::path::PathBuf::new();
-        file_name.push(out_dir);
-        file_name.push(&format!("{}.rs", package));
-        rustfmt(&file_name);
-    }
-    let mod_names = module_names_for_dir(out_dir);
-    generate_wrappers(
-        &mod_names
-            .iter()
-            .map(|m| format!("{}/{}.rs", out_dir, m))
-            .collect::<Vec<_>>(),
-        out_dir,
-        GenOpt::all(),
-    );
-}
-
-#[cfg(feature = "prost-codec")]
-mod prost_imps {
-    use super::wrapper::GenOpt;
-    use std::fs;
-    use std::path::Path;
-    use std::process::Command;
-
-    pub fn rustfmt(file_path: &Path) {
-        let output = Command::new("rustfmt")
-            .arg(file_path.to_str().unwrap())
-            .output();
-        if !output.map(|o| o.status.success()).unwrap_or(false) {
-            eprintln!("Rustfmt failed");
+            let mut level = 0;
+            for part in module.split('.') {
+                writeln!(f, "pub mod {} {{", part).unwrap();
+                level += 1;
+            }
+            writeln!(f, "include!(\"{}.rs\");", file_name,).unwrap();
+            if Path::new(&format!("{}/wrapper_{}.rs", self.out_dir, file_name)).exists() {
+                writeln!(f, "include!(\"wrapper_{}.rs\");", file_name,).unwrap();
+            }
+            writeln!(f, "{}", "}\n".repeat(level)).unwrap();
         }
     }
 
-    pub fn generate_wrappers<T: AsRef<str>>(file_names: &[T], out_dir: &str, gen_opt: GenOpt) {
-        for file in file_names {
-            let gen = super::wrapper::WrapperGen::new(file.as_ref(), gen_opt);
-            gen.write(out_dir);
+    fn prep_out_dir(&self) {
+        if Path::new(&self.out_dir).exists() {
+            fs::remove_dir_all(&self.out_dir).unwrap();
         }
+        fs::create_dir_all(&self.out_dir).unwrap();
     }
 
-    /// Returns a list of module names corresponding to the Rust files in a directory.
-    ///
-    /// Note that this does not read the files so will miss inline modules, it only
-    /// looks at filenames,
-    pub fn module_names_for_dir(directory_name: &str) -> Vec<String> {
-        let mut mod_names: Vec<_> = fs::read_dir(directory_name)
+    // List all `.rs` files in `self.out_dir`.
+    fn list_rs_files(&self) -> impl Iterator<Item = PathBuf> {
+        fs::read_dir(&self.out_dir)
             .expect("Couldn't read directory")
             .filter_map(|e| {
-                let file_name = e.expect("Couldn't list file").file_name();
-                let file_name = file_name.to_string_lossy();
-                if !file_name.ends_with(".rs") {
-                    return None;
+                let path = e.expect("Couldn't list file").path();
+                if path.extension() == Some(std::ffi::OsStr::new("rs")) {
+                    Some(path)
+                } else {
+                    None
                 }
-                file_name
-                    .split(".rs")
-                    .next()
-                    .filter(|n| !n.starts_with("wrapper_"))
-                    .map(ToOwned::to_owned)
             })
-            .collect();
-
-        mod_names.sort();
-        mod_names
     }
 }
 
-#[cfg(feature = "prost-codec")]
-pub use prost_imps::*;
+impl Default for Builder {
+    fn default() -> Builder {
+        Builder::new()
+    }
+}
+
+bitflags! {
+    pub struct GenOpt: u32 {
+        /// Generate implementation for trait `::protobuf::Message`.
+        const MESSAGE = 0b0000_0001;
+        /// Generate getters.
+        const TRIVIAL_GET = 0b0000_0010;
+        /// Generate setters.
+        const TRIVIAL_SET = 0b0000_0100;
+        /// Generate the `new_` constructors.
+        const NEW = 0b0000_1000;
+        /// Generate `clear_*` functions.
+        const CLEAR = 0b0001_0000;
+        /// Generate `has_*` functions.
+        const HAS = 0b0010_0000;
+        /// Generate mutable getters.
+        const MUT = 0b0100_0000;
+        /// Generate `take_*` functions.
+        const TAKE = 0b1000_0000;
+        /// Except `impl protobuf::Message`.
+        const NO_MSG = Self::TRIVIAL_GET.bits
+         | Self::TRIVIAL_SET.bits
+         | Self::CLEAR.bits
+         | Self::HAS.bits
+         | Self::MUT.bits
+         | Self::TAKE.bits;
+        /// Except `new_` and `impl protobuf::Message`.
+        const ACCESSOR = Self::TRIVIAL_GET.bits
+         | Self::TRIVIAL_SET.bits
+         | Self::MUT.bits
+         | Self::TAKE.bits;
+    }
+}

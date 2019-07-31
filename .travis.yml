@@ -24,3 +24,6 @@ matrix:
 
 script:
   - cargo test --all -- --nocapture
+  - cargo test --no-default-features --features prost-codec --all -- --nocapture
+  - cargo test --no-default-features --features grpcio-protobuf-codec --all -- --nocapture
+  - cargo test --no-default-features --features grpcio-prost-codec --all -- --nocapture

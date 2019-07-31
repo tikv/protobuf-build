@@ -1,5 +1,6 @@
-use crate::rustfmt;
-use bitflags::bitflags;
+// Copyright 2019 PingCAP, Inc.
+
+use crate::GenOpt;
 use quote::ToTokens;
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
@@ -9,70 +10,33 @@ use syn::{
     Type,
 };
 
-bitflags! {
-    pub struct GenOpt: u32 {
-        /// Generate implementation for trait `::protobuf::Message`.
-        const MESSAGE = 0b0000_0001;
-        /// Generate getters.
-        const TRIVIAL_GET = 0b0000_0010;
-        /// Generate setters.
-        const TRIVIAL_SET = 0b0000_0100;
-        /// Generate the `new_` constructors.
-        const NEW = 0b0000_1000;
-        /// Generate `clear_*` functions.
-        const CLEAR = 0b0001_0000;
-        /// Generate `has_*` functions.
-        const HAS = 0b0010_0000;
-        /// Generate mutable getters.
-        const MUT = 0b0100_0000;
-        /// Generate `take_*` functions.
-        const TAKE = 0b1000_0000;
-        /// Except `impl protobuf::Message`.
-        const NO_MSG = Self::TRIVIAL_GET.bits
-         | Self::TRIVIAL_SET.bits
-         | Self::CLEAR.bits
-         | Self::HAS.bits
-         | Self::MUT.bits
-         | Self::TAKE.bits;
-        /// Except `new_` and `impl protobuf::Message`.
-        const ACCESSOR = Self::TRIVIAL_GET.bits
-         | Self::TRIVIAL_SET.bits
-         | Self::MUT.bits
-         | Self::TAKE.bits;
-    }
-}
-
 pub struct WrapperGen {
     input: String,
-    name: String,
+    input_file: PathBuf,
     gen_opt: GenOpt,
 }
 
 impl WrapperGen {
-    pub fn new(file_name: &str, gen_opt: GenOpt) -> WrapperGen {
+    pub fn new(file_name: PathBuf, gen_opt: GenOpt) -> WrapperGen {
         let input = String::from_utf8(
-            fs::read(file_name).unwrap_or_else(|_| panic!("Could not read {}", file_name)),
+            fs::read(&file_name).unwrap_or_else(|_| panic!("Could not read {:?}", file_name)),
         )
         .expect("File not utf8");
         WrapperGen {
             input,
             gen_opt,
-            name: format!(
-                "wrapper_{}",
-                &file_name[file_name.rfind('/').map(|i| i + 1).unwrap_or(0)..]
-            ),
+            input_file: file_name,
         }
     }
 
-    pub fn write(&self, out_dir: &str) {
-        let mut path = PathBuf::new();
-        path.push(out_dir);
-        path.push(&self.name);
-        {
-            let mut out = BufWriter::new(File::create(&path).expect("Could not create file"));
-            self.generate(&mut out).expect("Error generating code");
-        }
-        rustfmt(&path);
+    pub fn write(&self) {
+        let mut path = self.input_file.clone();
+        path.set_file_name(format!(
+            "wrapper_{}",
+            path.file_name().unwrap().to_str().unwrap()
+        ));
+        let mut out = BufWriter::new(File::create(&path).expect("Could not create file"));
+        self.generate(&mut out).expect("Error generating code");
     }
 
     fn generate<W>(&self, buf: &mut W) -> Result<(), io::Error>
