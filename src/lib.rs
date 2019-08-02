@@ -24,7 +24,6 @@ pub struct Builder {
     includes: Vec<String>,
     black_list: Vec<String>,
     out_dir: String,
-    #[allow(dead_code)]
     wrapper_opts: GenOpt,
 }
 
@@ -53,7 +52,8 @@ impl Builder {
         self.generate_mod_file();
     }
 
-    #[cfg(feature = "prost-codec")]
+    /// This option is only used when generating Prost code. Otherwise, it is
+    /// silently ignored.
     pub fn wrapper_options(&mut self, wrapper_opts: GenOpt) -> &mut Self {
         self.wrapper_opts = wrapper_opts;
         self
