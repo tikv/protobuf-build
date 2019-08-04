@@ -15,6 +15,7 @@ mod protobuf_impl;
 mod prost_impl;
 
 use bitflags::bitflags;
+use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -25,6 +26,7 @@ pub struct Builder {
     black_list: Vec<String>,
     out_dir: String,
     wrapper_opts: GenOpt,
+    package_name: Option<String>,
 }
 
 impl Builder {
@@ -42,6 +44,7 @@ impl Builder {
                 std::env::var("OUT_DIR").expect("No OUT_DIR defined")
             ),
             wrapper_opts: GenOpt::all(),
+            package_name: None,
         }
     }
 
@@ -109,6 +112,16 @@ impl Builder {
         self
     }
 
+    /// If specified, a module with the given name will be generated which re-exports
+    /// all generated items.
+    ///
+    /// This is ignored by Prost, since Prost uses the package names of protocols
+    /// in any case.
+    pub fn package_name(&mut self, package_name: impl Into<String>) -> &mut Self {
+        self.package_name = Some(package_name.into());
+        self
+    }
+
     fn generate_mod_file(&self) {
         let mut f = File::create(format!("{}/mod.rs", self.out_dir)).unwrap();
 
@@ -123,9 +136,15 @@ impl Builder {
             Some((name.replace('-', "_"), name.to_owned()))
         });
 
+        let mut exports = String::new();
         for (module, file_name) in modules {
             if cfg!(feature = "protobuf-codec") {
-                writeln!(f, "pub mod {};", module).unwrap();
+                if self.package_name.is_some() {
+                    writeln!(exports, "pub use super::{}::*;", module).unwrap();
+                } else {
+                    writeln!(f, "pub ").unwrap();
+                }
+                writeln!(f, "mod {};", module).unwrap();
                 continue;
             }
 
@@ -139,6 +158,16 @@ impl Builder {
                 writeln!(f, "include!(\"wrapper_{}.rs\");", file_name,).unwrap();
             }
             writeln!(f, "{}", "}\n".repeat(level)).unwrap();
+        }
+
+        if !exports.is_empty() {
+            writeln!(
+                f,
+                "pub mod {} {{ {} }}",
+                self.package_name.as_ref().unwrap(),
+                exports
+            )
+            .unwrap();
         }
     }
 
