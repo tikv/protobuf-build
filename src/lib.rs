@@ -27,6 +27,7 @@ pub struct Builder {
     out_dir: String,
     wrapper_opts: GenOpt,
     package_name: Option<String>,
+    re_export_services: bool,
 }
 
 impl Builder {
@@ -45,6 +46,7 @@ impl Builder {
             ),
             wrapper_opts: GenOpt::all(),
             package_name: None,
+            re_export_services: true,
         }
     }
 
@@ -119,6 +121,13 @@ impl Builder {
     /// in any case.
     pub fn package_name(&mut self, package_name: impl Into<String>) -> &mut Self {
         self.package_name = Some(package_name.into());
+        self
+    }
+
+    /// Whether services defined in separate modules should be re-exported from
+    /// their corresponding module. Default is `true`.
+    pub fn re_export_services(&mut self, re_export_services: bool) -> &mut Self {
+        self.re_export_services = re_export_services;
         self
     }
 

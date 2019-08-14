@@ -92,6 +92,7 @@ impl Builder {
         )
         .unwrap();
         self.generate_grpcio(&desc.get_file(), &files_to_generate);
+        self.import_grpcio();
         self.replace_read_unknown_fields();
     }
 
@@ -125,6 +126,40 @@ impl Builder {
     }
 
     #[cfg(feature = "grpcio-protobuf-codec")]
+    fn import_grpcio(&self) {
+        use std::collections::BTreeMap;
+        use std::fs::OpenOptions;
+
+        if !self.re_export_services {
+            return;
+        }
+
+        // TODO should be behind an option
+        let paths: BTreeMap<_, _> = self
+            .list_rs_files()
+            .map(|path| (path.file_stem().unwrap().to_str().unwrap().to_owned(), path))
+            .collect();
+        for (name, path) in &paths {
+            if name.starts_with("wrapper_")
+                || *name == "mod"
+                || name.ends_with("_grpc")
+                || !paths.contains_key(&*format!("{}_grpc", name))
+            {
+                continue;
+            }
+
+            let mut out = OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .expect("Couldn't open source file");
+            writeln!(out, "pub use super::{}_grpc::*;", name).expect("Could not write source file");
+        }
+    }
+
+    #[cfg(not(feature = "grpcio-protobuf-codec"))]
+    fn import_grpcio(&self) {}
+
+    #[cfg(feature = "grpcio-protobuf-codec")]
     fn generate_grpcio(
         &self,
         desc: &[protobuf::descriptor::FileDescriptorProto],
@@ -139,6 +174,6 @@ impl Builder {
         }
     }
 
-    #[cfg(all(feature = "protobuf-codec", not(feature = "grpcio-protobuf-codec")))]
+    #[cfg(not(feature = "grpcio-protobuf-codec"))]
     fn generate_grpcio(&self, _: &[protobuf::descriptor::FileDescriptorProto], _: &[String]) {}
 }
