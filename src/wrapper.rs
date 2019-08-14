@@ -488,7 +488,7 @@ struct FieldMethods {
     ref_ty: RefType,
     override_ty: Option<String>,
     name: Ident,
-    unesc_name: String,
+    unesc_base: String,
     has: bool,
     // None = delegate to field's `clear`
     // Some = default value
@@ -505,16 +505,16 @@ struct FieldMethods {
 
 impl FieldMethods {
     fn new(ty: &Type, ident: &Ident) -> FieldMethods {
-        let mut unesc_name = ident.to_string();
-        if unesc_name.starts_with("r#") {
-            unesc_name = format!("field_{}", &unesc_name[2..]);
+        let mut unesc_base = ident.to_string();
+        if unesc_base.starts_with("r#") {
+            unesc_base = unesc_base[2..].to_owned();
         }
         FieldMethods {
             ty: ty.clone().into_token_stream().to_string(),
             ref_ty: RefType::Ref,
             override_ty: None,
             name: ident.clone(),
-            unesc_name,
+            unesc_base,
             has: false,
             clear: None,
             set: None,
@@ -534,7 +534,7 @@ impl FieldMethods {
             writeln!(
                 buf,
                 "#[inline] pub fn has_{}(&self) -> bool {{ self.{}.is_some() }}",
-                self.unesc_name, self.name
+                self.unesc_base, self.name
             )?;
         }
         let ty = match &self.override_ty {
@@ -552,30 +552,26 @@ impl FieldMethods {
                 Some(s) => writeln!(
                     buf,
                     "#[inline] pub fn clear_{}(&mut self) {{ self.{} = {} }}",
-                    self.unesc_name, self.name, s
+                    self.unesc_base, self.name, s
                 )?,
                 None => writeln!(
                     buf,
                     "#[inline] pub fn clear_{}(&mut self) {{ self.{}.clear(); }}",
-                    self.unesc_name, self.name
+                    self.unesc_base, self.name
                 )?,
             }
         }
-        // rust-protobuf escapes keywords using `field`, whereas Prost uses `r#`, in the case
-        // where that happens, we should generate a wrapper `set_` method for consistency.
-        let field_esc =
-            self.unesc_name.starts_with("field") && !self.name.to_string().starts_with("field");
         // set_*
         match &self.set {
-            Some(s) if field_esc || !self.enum_set => writeln!(
+            Some(s) if !self.enum_set => writeln!(
                 buf,
                 "#[inline] pub fn set_{}(&mut self, v: {}) {{ self.{} = {}; }}",
-                self.unesc_name, ty, self.name, s
+                self.unesc_base, ty, self.name, s
             )?,
             None if gen_opt.contains(GenOpt::TRIVIAL_SET) => writeln!(
                 buf,
                 "#[inline] pub fn set_{}(&mut self, v: {}) {{ self.{} = v; }}",
-                self.unesc_name, ty, self.name
+                self.unesc_base, ty, self.name
             )?,
             _ => {}
         }
@@ -584,7 +580,7 @@ impl FieldMethods {
             Some(s) => writeln!(
                 buf,
                 "#[inline] pub fn get_{}(&self) -> {} {{ {} }}",
-                self.unesc_name, ref_ty, s
+                self.unesc_base, ref_ty, s
             )?,
             None => {
                 if gen_opt.contains(GenOpt::TRIVIAL_GET) {
@@ -595,7 +591,7 @@ impl FieldMethods {
                     writeln!(
                         buf,
                         "#[inline] pub fn get_{}(&self) -> {} {{ {}self.{} }}",
-                        self.unesc_name, ref_ty, rf, self.name
+                        self.unesc_base, ref_ty, rf, self.name
                     )?
                 }
             }
@@ -607,14 +603,14 @@ impl FieldMethods {
                     writeln!(
                         buf,
                         "#[inline] pub fn mut_{}(&mut self) -> &mut {} {{ &mut self.{} }}",
-                        self.unesc_name, ty, self.name
+                        self.unesc_base, ty, self.name
                     )?;
                 }
                 MethodKind::Custom(s) => {
                     writeln!(
                         buf,
                         "#[inline] pub fn mut_{}(&mut self) -> &mut {} {{ {} }} ",
-                        self.unesc_name, ty, s
+                        self.unesc_base, ty, s
                     )?;
                 }
                 MethodKind::None => {}
@@ -627,7 +623,7 @@ impl FieldMethods {
                 writeln!(
                     buf,
                     "#[inline] pub fn take_{}(&mut self) -> {} {{ {} }}",
-                    self.unesc_name, ty, s
+                    self.unesc_base, ty, s
                 )?;
             }
         }
