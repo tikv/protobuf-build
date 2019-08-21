@@ -328,20 +328,7 @@ impl FieldKind {
         let mut result = FieldMethods::new(ty, ident);
         match self {
             FieldKind::Optional(fk) => {
-                let unwrapped_type = match ty {
-                    Type::Path(p) => {
-                        let seg = p.path.segments.iter().last().unwrap();
-                        assert_eq!(seg.ident, "Option");
-                        match &seg.arguments {
-                            PathArguments::AngleBracketed(args) => match &args.args[0] {
-                                GenericArgument::Type(ty) => ty.clone(),
-                                _ => unreachable!(),
-                            },
-                            _ => unreachable!(),
-                        }
-                    }
-                    _ => unreachable!(),
-                };
+                let unwrapped_type = unwrap_type(ty, "Option");
                 let nested_methods = fk.methods(&unwrapped_type, ident).unwrap();
                 let unwrapped_type = unwrapped_type.into_token_stream().to_string();
 
@@ -443,6 +430,8 @@ impl FieldKind {
                     "::std::mem::replace(&mut self.{}, ::std::vec::Vec::new())",
                     result.name
                 ));
+                let unwrapped_type = unwrap_type(ty, "Vec").into_token_stream().to_string();
+                result.ref_ty = RefType::Deref(format!("[{}]", unwrapped_type));
             }
             FieldKind::Bytes => {
                 result.ref_ty = RefType::Deref("[u8]".to_owned());
@@ -480,6 +469,23 @@ impl FieldKind {
         }
 
         Some(result)
+    }
+}
+
+fn unwrap_type(ty: &Type, type_ctor: &str) -> Type {
+    match ty {
+        Type::Path(p) => {
+            let seg = p.path.segments.iter().last().unwrap();
+            assert_eq!(seg.ident, type_ctor);
+            match &seg.arguments {
+                PathArguments::AngleBracketed(args) => match &args.args[0] {
+                    GenericArgument::Type(ty) => ty.clone(),
+                    _ => unreachable!(),
+                },
+                _ => unreachable!(),
+            }
+        }
+        _ => unreachable!(),
     }
 }
 
