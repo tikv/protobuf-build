@@ -4,6 +4,8 @@ version = "0.10.0"
 authors = ["Nick Cameron <nrc@ncameron.org>"]
 edition = "2018"
 license = "Apache-2.0"
+repository = "https://github.com/tikv/protobuf-build"
+homepage = "https://github.com/tikv/protobuf-build"
 description = "Utility functions for generating Rust code from protobufs (using protobuf-rust or Prost)"
 
 [features]
