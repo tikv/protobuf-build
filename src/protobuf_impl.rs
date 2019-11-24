@@ -9,9 +9,24 @@ use std::path::Path;
 use std::process::Command;
 use std::str::from_utf8;
 
-// For preference we use the protoc from bin which we bundle with the crate. If
-// there is not one suitable for the platform, then we try system protoc.
+// We use system protoc when its version matches,
+// otherwise use the protoc from bin which we bundle with the crate.
 fn get_protoc() -> String {
+    let ver_re = Regex::new(r"([0-9]+)\.([0-9]+)\.[0-9]").unwrap();
+    let output = Command::new("protoc").arg("--version").output();
+    match output {
+        Ok(o) => {
+            let caps = ver_re.captures(from_utf8(&o.stdout).unwrap()).unwrap();
+            let major = caps.get(1).unwrap().as_str().parse::<i16>().unwrap();
+            let minor = caps.get(2).unwrap().as_str().parse::<i16>().unwrap();
+            if major == 3 && minor >= 1 {
+                return "protoc".to_owned();
+            }
+            println!("The system `protoc` version mismatch, require >= 3.1.0, got {}.{}.x, fallback to the bundled `protoc`", major, minor);
+        }
+        Err(_) => println!("`protoc` not in PATH, try using the bundled protoc"),
+    };
+    // The bundled protoc should always match the version
     let protoc_bin_name = match (env::consts::OS, env::consts::ARCH) {
         ("linux", "x86") => "protoc-linux-x86_32",
         ("linux", "x86_64") => "protoc-linux-x86_64",
@@ -19,7 +34,7 @@ fn get_protoc() -> String {
         ("linux", "ppcle64") => "protoc-linux-ppcle_64",
         ("macos", "x86_64") => "protoc-osx-x86_64",
         ("windows", _) => "protoc-win32.exe",
-        _ => return "protoc".to_owned(),
+        _ => panic!("No suitable `protoc` (>= 3.1.0) found in PATH"),
     };
     let bin_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("bin")
@@ -27,27 +42,8 @@ fn get_protoc() -> String {
     bin_path.display().to_string()
 }
 
-/// Check that the user's installed version of the protobuf compiler is 3.1.x.
-fn check_protoc_version(protoc: &str) {
-    let ver_re = Regex::new(r"([0-9]+)\.([0-9]+)\.[0-9]").unwrap();
-    let ver = Command::new(protoc)
-        .arg("--version")
-        .output()
-        .expect("Program `protoc` not installed (is it in PATH?).");
-    let caps = ver_re.captures(from_utf8(&ver.stdout).unwrap()).unwrap();
-    let major = caps.get(1).unwrap().as_str().parse::<i16>().unwrap();
-    let minor = caps.get(2).unwrap().as_str().parse::<i16>().unwrap();
-    if major == 3 && minor < 1 || major < 3 {
-        panic!(
-            "Invalid version of protoc (required at least 3.1.x, get {}.{}.x).",
-            major, minor,
-        );
-    }
-}
-
 impl Builder {
     pub fn generate_files(&self) {
-        check_protoc_version(&get_protoc());
         let mut cmd = Command::new(get_protoc());
         let desc_file = format!("{}/mod.desc", self.out_dir);
         for i in &self.includes {
