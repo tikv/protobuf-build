@@ -34,7 +34,7 @@ fn get_protoc() -> String {
         ("linux", "ppcle64") => "protoc-linux-ppcle_64",
         ("macos", "x86_64") => "protoc-osx-x86_64",
         ("windows", _) => "protoc-win32.exe",
-        _ => panic!("Program `protoc` not installed (is it in PATH?)."),
+        _ => panic!("No bundled `protoc` for this platform."),
     };
     let bin_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("bin")
