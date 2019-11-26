@@ -22,7 +22,7 @@ fn get_protoc() -> String {
             if major == 3 && minor >= 1 {
                 return "protoc".to_owned();
             }
-            println!("The system `protoc` version mismatch, require >= 3.1.x, got {}.{}.x, fallback to the bundled `protoc`", major, minor);
+            println!("The system `protoc` version mismatch, require >= 3.1.0, got {}.{}.x, fallback to the bundled `protoc`", major, minor);
         }
         Err(_) => println!("`protoc` not in PATH, try using the bundled protoc"),
     };
@@ -34,7 +34,7 @@ fn get_protoc() -> String {
         ("linux", "ppcle64") => "protoc-linux-ppcle_64",
         ("macos", "x86_64") => "protoc-osx-x86_64",
         ("windows", _) => "protoc-win32.exe",
-        _ => panic!("No bundled `protoc` for this platform."),
+        _ => panic!("No suitable `protoc` (>= 3.1.0) found in PATH"),
     };
     let bin_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("bin")
