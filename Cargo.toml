@@ -24,3 +24,6 @@ regex = { version = "1.1" }
 syn = { version = "0.15", features = ["full"], optional = true }
 quote = { version = "0.6", optional = true }
 bitflags = "1.0"
+
+[workspace]
+members = ["tests"]

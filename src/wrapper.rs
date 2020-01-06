@@ -96,7 +96,7 @@ where
         .filter_map(|f| {
             f.ident
                 .as_ref()
-                .map(|i| (i, &f.ty, FieldKind::from_attrs(&f.attrs)))
+                .map(|i| (i, &f.ty, FieldKind::from_attrs(&f.attrs, prefix)))
         })
         .filter_map(|(n, t, k)| k.methods(t, n))
         .map(|m| m.write_methods(buf, gen_opt))
@@ -251,7 +251,10 @@ const INT_TYPES: [&str; 4] = ["int32", "int64", "uint32", "uint64"];
 #[derive(Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
 enum FieldKind {
     Optional(Box<FieldKind>),
-    Repeated,
+    Repeated {
+        // A module prefix of a repeated message.
+        prefix: String,
+    },
     Message,
     Int,
     Float,
@@ -264,7 +267,7 @@ enum FieldKind {
 }
 
 impl FieldKind {
-    fn from_attrs(attrs: &[Attribute]) -> FieldKind {
+    fn from_attrs(attrs: &[Attribute], prefix: &str) -> FieldKind {
         for a in attrs {
             if a.path.is_ident("prost") {
                 if let Ok(Meta::List(list)) = a.parse_meta() {
@@ -278,7 +281,9 @@ impl FieldKind {
                                 } else if id == "message" {
                                     Some(FieldKind::Message)
                                 } else if id == "repeated" {
-                                    Some(FieldKind::Repeated)
+                                    Some(FieldKind::Repeated {
+                                        prefix: prefix.to_owned(),
+                                    })
                                 } else if id == "bytes" {
                                     Some(FieldKind::Bytes)
                                 } else if id == "string" {
@@ -294,8 +299,8 @@ impl FieldKind {
                                 }
                             } else if let NestedMeta::Meta(Meta::NameValue(mnv)) = item {
                                 let value = mnv.lit.clone().into_token_stream().to_string();
-                                // Trim leading and trailing `"`
-                                let value = value[1..value.len() - 1].to_owned();
+                                // Trim leading and trailing `"` and add prefix.
+                                let value = format!("{}{}", prefix, &value[1..value.len() - 1]);
                                 if mnv.ident == "enumeration" {
                                     Some(FieldKind::Enumeration(value))
                                 } else if mnv.ident == "oneof" {
@@ -348,7 +353,7 @@ impl FieldKind {
                 let as_ref = match &result.ref_ty {
                     RefType::Ref | RefType::Deref(_) => {
                         let unwrapped_type = match &**fk {
-                            FieldKind::Bytes | FieldKind::Repeated => "::std::vec::Vec",
+                            FieldKind::Bytes | FieldKind::Repeated { .. } => "::std::vec::Vec",
                             _ => &unwrapped_type,
                         };
                         result.mt = MethodKind::Custom(format!(
@@ -424,14 +429,15 @@ impl FieldKind {
                 result.ref_ty = RefType::Copy;
                 result.clear = Some("false".to_owned());
             }
-            FieldKind::Repeated => {
+            FieldKind::Repeated { prefix } => {
                 result.mt = MethodKind::Standard;
                 result.take = Some(format!(
                     "::std::mem::replace(&mut self.{}, ::std::vec::Vec::new())",
                     result.name
                 ));
                 let unwrapped_type = unwrap_type(ty, "Vec").into_token_stream().to_string();
-                result.ref_ty = RefType::Deref(format!("[{}]", unwrapped_type));
+                result.ref_ty = RefType::Deref(format!("[{}{}]", prefix, unwrapped_type));
+                result.override_ty = Some(format!("::std::vec::Vec<{}{}>", prefix, unwrapped_type));
             }
             FieldKind::Bytes => {
                 result.ref_ty = RefType::Deref("[u8]".to_owned());
