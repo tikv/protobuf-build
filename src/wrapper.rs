@@ -251,7 +251,10 @@ const INT_TYPES: [&str; 4] = ["int32", "int64", "uint32", "uint64"];
 #[derive(Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
 enum FieldKind {
     Optional(Box<FieldKind>),
-    Repeated(String),
+    Repeated {
+        // A module prefix of a repeated message.
+        prefix: String,
+    },
     Message,
     Int,
     Float,
@@ -278,7 +281,9 @@ impl FieldKind {
                                 } else if id == "message" {
                                     Some(FieldKind::Message)
                                 } else if id == "repeated" {
-                                    Some(FieldKind::Repeated(prefix.to_owned()))
+                                    Some(FieldKind::Repeated {
+                                        prefix: prefix.to_owned(),
+                                    })
                                 } else if id == "bytes" {
                                     Some(FieldKind::Bytes)
                                 } else if id == "string" {
@@ -348,7 +353,7 @@ impl FieldKind {
                 let as_ref = match &result.ref_ty {
                     RefType::Ref | RefType::Deref(_) => {
                         let unwrapped_type = match &**fk {
-                            FieldKind::Bytes | FieldKind::Repeated(_) => "::std::vec::Vec",
+                            FieldKind::Bytes | FieldKind::Repeated { .. } => "::std::vec::Vec",
                             _ => &unwrapped_type,
                         };
                         result.mt = MethodKind::Custom(format!(
@@ -424,7 +429,7 @@ impl FieldKind {
                 result.ref_ty = RefType::Copy;
                 result.clear = Some("false".to_owned());
             }
-            FieldKind::Repeated(prefix) => {
+            FieldKind::Repeated { prefix } => {
                 result.mt = MethodKind::Standard;
                 result.take = Some(format!(
                     "::std::mem::replace(&mut self.{}, ::std::vec::Vec::new())",
