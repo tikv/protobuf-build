@@ -1,13 +1,15 @@
 // Copyright 2019 PingCAP, Inc.
 
-use crate::Builder;
-use regex::Regex;
 use std::env;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::Command;
 use std::str::from_utf8;
+
+use regex::Regex;
+
+use crate::Builder;
 
 // We use system protoc when its version matches,
 // otherwise use the protoc from bin which we bundle with the crate.

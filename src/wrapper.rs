@@ -1,14 +1,16 @@
 // Copyright 2019 PingCAP, Inc.
 
-use crate::GenOpt;
-use quote::ToTokens;
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
 use std::path::PathBuf;
+
+use quote::ToTokens;
 use syn::{
     Attribute, GenericArgument, Ident, Item, ItemEnum, ItemStruct, Meta, NestedMeta, PathArguments,
     Type,
 };
+
+use crate::GenOpt;
 
 pub struct WrapperGen {
     input: String,
@@ -275,25 +277,29 @@ impl FieldKind {
                         .nested
                         .iter()
                         .filter_map(|item| {
-                            if let NestedMeta::Meta(Meta::Word(id)) = item {
-                                if id == "optional" {
+                            if let NestedMeta::Meta(Meta::Path(id)) = item {
+                                if id.is_ident("optional") {
                                     Some(FieldKind::Optional(Box::new(FieldKind::Message)))
-                                } else if id == "message" {
+                                } else if id.is_ident("message") {
                                     Some(FieldKind::Message)
-                                } else if id == "repeated" {
+                                } else if id.is_ident("repeated") {
                                     Some(FieldKind::Repeated {
                                         prefix: prefix.to_owned(),
                                     })
-                                } else if id == "bytes" {
+                                } else if id.is_ident("bytes") {
                                     Some(FieldKind::Bytes)
-                                } else if id == "string" {
+                                } else if id.is_ident("string") {
                                     Some(FieldKind::String)
-                                } else if id == "bool" {
+                                } else if id.is_ident("bool") {
                                     Some(FieldKind::Bool)
-                                } else if id == "float" || id == "double" {
+                                } else if id.is_ident("float") || id.is_ident("double") {
                                     Some(FieldKind::Float)
-                                } else if INT_TYPES.contains(&&*id.to_string()) {
-                                    Some(FieldKind::Int)
+                                } else if let Some(id) = id.get_ident() {
+                                    if INT_TYPES.contains(&id.to_string().as_str()) {
+                                        Some(FieldKind::Int)
+                                    } else {
+                                        None
+                                    }
                                 } else {
                                     None
                                 }
@@ -301,9 +307,9 @@ impl FieldKind {
                                 let value = mnv.lit.clone().into_token_stream().to_string();
                                 // Trim leading and trailing `"` and add prefix.
                                 let value = format!("{}{}", prefix, &value[1..value.len() - 1]);
-                                if mnv.ident == "enumeration" {
+                                if mnv.path.is_ident("enumeration") {
                                     Some(FieldKind::Enumeration(value))
-                                } else if mnv.ident == "oneof" {
+                                } else if mnv.path.is_ident("oneof") {
                                     Some(FieldKind::OneOf(value))
                                 } else {
                                     None
@@ -659,7 +665,7 @@ enum MethodKind {
 fn is_message(attrs: &[Attribute]) -> bool {
     for a in attrs {
         if a.path.is_ident("derive") {
-            let tts = a.tts.to_string();
+            let tts = a.tokens.to_string();
             if tts.contains(":: Message") {
                 return true;
             }
@@ -671,7 +677,7 @@ fn is_message(attrs: &[Attribute]) -> bool {
 fn is_enum(attrs: &[Attribute]) -> bool {
     for a in attrs {
         if a.path.is_ident("derive") {
-            let tts = a.tts.to_string();
+            let tts = a.tokens.to_string();
             if tts.contains("Enumeration") {
                 return true;
             }
