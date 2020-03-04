@@ -265,6 +265,7 @@ enum FieldKind {
     String,
     OneOf(String),
     Enumeration(String),
+    Map,
     // Fixed are not handled.
 }
 
@@ -311,6 +312,8 @@ impl FieldKind {
                                     Some(FieldKind::Enumeration(value))
                                 } else if mnv.path.is_ident("oneof") {
                                     Some(FieldKind::OneOf(value))
+                                } else if mnv.path.is_ident("map") {
+                                    Some(FieldKind::Map)
                                 } else {
                                     None
                                 }
@@ -474,6 +477,9 @@ impl FieldKind {
                     }}",
                     enum_type, result.name,
                 ));
+            }
+            FieldKind::Map => {
+                result.mt = MethodKind::Standard;
             }
             // There's only a few `oneof`s and they are a bit complex, so easier to
             // handle manually.
