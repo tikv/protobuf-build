@@ -23,7 +23,7 @@ fn get_protoc() -> String {
         ("linux", "x86") => "protoc-linux-x86_32",
         ("linux", "x86_64") => "protoc-linux-x86_64",
         ("linux", "aarch64") => "protoc-linux-aarch_64",
-        ("linux", "ppcle64") => "protoc-linux-ppcle_64",
+        ("linux", "powerpc64") => "protoc-linux-ppcle_64",
         ("macos", "x86_64") => "protoc-osx-x86_64",
         ("windows", _) => "protoc-win32.exe",
         _ => panic!("No suitable `protoc` (>= 3.1.0) found in PATH"),
