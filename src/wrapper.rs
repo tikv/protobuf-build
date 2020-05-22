@@ -456,7 +456,29 @@ impl FieldKind {
                     "::std::mem::replace(&mut self.{}, ::std::vec::Vec::new())",
                     result.name
                 ));
-                let unwrapped_type = unwrap_type(ty, "Vec").into_token_stream().to_string();
+                let mut unwrapped_type: &str =
+                    &unwrap_type(ty, "Vec").into_token_stream().to_string();
+
+                // The point of the prefix is to account for nesting of modules. However, it turns out
+                // that unwrapped_type may start with `super` so if we just smoosh the two together we
+                // get an invalid type. So the following small nightmare of code pops a suffix of
+                // prefix for every `super`, while there are both `super`s and segments of the prefix.
+                let mut segments: Vec<_> = prefix.split("::").collect();
+                while let Some(s) = segments.pop() {
+                    if s.is_empty() {
+                        continue;
+                    }
+                    if !unwrapped_type.starts_with("super ::") {
+                        segments.push(s);
+                        break;
+                    }
+                    unwrapped_type = &unwrapped_type[8..]
+                }
+                let mut prefix = segments.join("::");
+                if !prefix.is_empty() {
+                    prefix += "::"
+                }
+
                 result.ref_ty = RefType::Deref(format!("[{}{}]", prefix, unwrapped_type));
                 result.override_ty = Some(format!("::std::vec::Vec<{}{}>", prefix, unwrapped_type));
             }
