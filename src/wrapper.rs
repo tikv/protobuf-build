@@ -4,10 +4,11 @@ use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
 use std::path::PathBuf;
 
+use proc_macro2::Span;
 use quote::ToTokens;
 use syn::{
     Attribute, GenericArgument, Ident, Item, ItemEnum, ItemStruct, Meta, NestedMeta, PathArguments,
-    Type,
+    Token, Type, TypePath,
 };
 
 use crate::GenOpt;
@@ -343,8 +344,10 @@ impl FieldKind {
         match self {
             FieldKind::Optional(fk) => {
                 let unwrapped_type = unwrap_type(ty, "Option");
+                let unboxed_type = unwrap_type(&unwrapped_type, "Box");
                 let nested_methods = fk.methods(&unwrapped_type, ident).unwrap();
                 let unwrapped_type = unwrapped_type.into_token_stream().to_string();
+                let unboxed_type = unboxed_type.into_token_stream().to_string();
 
                 result.override_ty = Some(match nested_methods.override_ty {
                     Some(t) => t,
@@ -370,7 +373,8 @@ impl FieldKind {
                                 self.{0} = ::std::option::Option::Some({1}::default());
                             }}
                             self.{0}.as_mut().unwrap()",
-                            result.name, unwrapped_type,
+                            result.name,
+                            type_in_expr_context(unwrapped_type),
                         ));
                         ".as_ref()"
                     }
@@ -381,9 +385,10 @@ impl FieldKind {
                     FieldKind::Message => {
                         result.take = Some(format!(
                             "self.{}.take().unwrap_or_else({}::default)",
-                            result.name, unwrapped_type,
+                            result.name,
+                            type_in_expr_context(&unwrapped_type),
                         ));
-                        format!("{}::default_ref()", unwrapped_type,)
+                        format!("{}::default_ref()", type_in_expr_context(&unboxed_type))
                     }
                     FieldKind::Bytes => {
                         result.take = Some(format!(
@@ -414,7 +419,9 @@ impl FieldKind {
                             }},
                             None => {}::default(),
                         }}",
-                        result.name, t, t,
+                        result.name,
+                        type_in_expr_context(t),
+                        t,
                     ),
                     _ => format!(
                         "match self.{}{} {{
@@ -425,7 +432,12 @@ impl FieldKind {
                     ),
                 });
             }
-            FieldKind::Message => {}
+            FieldKind::Message => {
+                let unboxed_type = unwrap_type(ty, "Box");
+                if ty != &unboxed_type {
+                    result.ref_ty = RefType::Deref(unboxed_type.into_token_stream().to_string());
+                }
+            }
             FieldKind::Int => {
                 result.ref_ty = RefType::Copy;
                 result.clear = Some("0".to_owned());
@@ -475,7 +487,8 @@ impl FieldKind {
                         Some(e) => e,
                         None => panic!(\"Unknown enum variant: {{}}\", self.{1}),
                     }}",
-                    enum_type, result.name,
+                    type_in_expr_context(enum_type),
+                    result.name,
                 ));
             }
             FieldKind::Map => {
@@ -494,13 +507,16 @@ fn unwrap_type(ty: &Type, type_ctor: &str) -> Type {
     match ty {
         Type::Path(p) => {
             let seg = p.path.segments.iter().last().unwrap();
-            assert_eq!(seg.ident, type_ctor);
-            match &seg.arguments {
-                PathArguments::AngleBracketed(args) => match &args.args[0] {
-                    GenericArgument::Type(ty) => ty.clone(),
+            if seg.ident == type_ctor {
+                match &seg.arguments {
+                    PathArguments::AngleBracketed(args) => match &args.args[0] {
+                        GenericArgument::Type(ty) => ty.clone(),
+                        _ => unreachable!(),
+                    },
                     _ => unreachable!(),
-                },
-                _ => unreachable!(),
+                }
+            } else {
+                ty.clone()
             }
         }
         _ => unreachable!(),
@@ -690,4 +706,41 @@ fn is_enum(attrs: &[Attribute]) -> bool {
         }
     }
     false
+}
+
+// When a generic type is used in expression context, it might need to be adjusted.
+// For example, `Box<Foo>` becomes `Box::<Foo>`
+fn type_in_expr_context(s: &str) -> String {
+    let mut parsed: TypePath = syn::parse_str(s).expect("Not a type?");
+    let last_segment = parsed.path.segments.last_mut().unwrap();
+    if !last_segment.arguments.is_empty() {
+        if let PathArguments::AngleBracketed(ref mut a) = last_segment.arguments {
+            if a.colon2_token == None {
+                a.colon2_token = Some(Token![::](Span::call_site()));
+            }
+        }
+    }
+    parsed.to_token_stream().to_string()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_type_in_expr_context() {
+        assert_eq!("T", type_in_expr_context("T"));
+        assert_eq!(
+            ":: foo :: bar :: Vec :: < Baz >",
+            type_in_expr_context("::foo::bar::Vec<Baz>")
+        );
+        assert_eq!(
+            ":: foo :: bar :: Vec :: < Box < Baz > >",
+            type_in_expr_context("::foo::bar::Vec::<Box<Baz>>")
+        );
+        assert_eq!(
+            ":: foo :: bar :: Vec :: < Box < Baz > >",
+            type_in_expr_context("::foo::bar::Vec<Box<Baz>>")
+        );
+    }
 }
