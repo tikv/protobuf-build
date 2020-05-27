@@ -463,7 +463,14 @@ impl FieldKind {
                 // that unwrapped_type may start with `super` so if we just smoosh the two together we
                 // get an invalid type. So the following small nightmare of code pops a suffix of
                 // prefix for every `super`, while there are both `super`s and segments of the prefix.
-                let mut segments: Vec<_> = prefix.split("::").collect();
+                let mut segments: Vec<_> = if ["bool", "u32", "i32", "u64", "i32", "f32", "f64"]
+                    .contains(&unwrapped_type)
+                {
+                    // A built-in type should never be prefixed.
+                    Vec::new()
+                } else {
+                    prefix.split("::").collect()
+                };
                 while let Some(s) = segments.pop() {
                     if s.is_empty() {
                         continue;
