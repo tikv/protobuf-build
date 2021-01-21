@@ -106,6 +106,7 @@ impl Builder {
         self.generate_grpcio(&desc.get_file(), &files_to_generate);
         self.import_grpcio();
         self.replace_read_unknown_fields();
+        self.fix_links();
     }
 
     /// Convert protobuf files to use the old way of reading protobuf enums.
@@ -131,6 +132,23 @@ impl Builder {
                     }",
                 )
             };
+            let mut out = File::create(&path).unwrap();
+            out.write_all(text.as_bytes())
+                .expect("Could not write source file");
+        });
+    }
+
+    /// Convert protobuf files to contain properly formatted links
+    fn fix_links(&self) {
+        let regex = Regex::new(r"^(\s*//.*)(https?://\S+)(.*)$").unwrap();
+
+        self.list_rs_files().for_each(|path| {
+            let mut text = String::new();
+            let mut f = File::open(&path).unwrap();
+            f.read_to_string(&mut text)
+                .expect("Couldn't read source file");
+
+            let text = regex.replace_all(&text, "$1`<$2>`$3");
             let mut out = File::create(&path).unwrap();
             out.write_all(text.as_bytes())
                 .expect("Could not write source file");
