@@ -25,8 +25,10 @@ pub struct Builder {
     includes: Vec<String>,
     black_list: Vec<String>,
     out_dir: String,
+    #[allow(dead_code)]
     wrapper_opts: GenOpt,
     package_name: Option<String>,
+    #[allow(dead_code)]
     re_export_services: bool,
 }
 
