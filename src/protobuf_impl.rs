@@ -1,5 +1,6 @@
 // Copyright 2019 PingCAP, Inc.
 
+use protobuf::Message;
 use std::env;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -79,8 +80,7 @@ impl Builder {
         }
 
         let desc_bytes = std::fs::read(&desc_file).unwrap();
-        let desc: protobuf::descriptor::FileDescriptorSet =
-            protobuf::parse_from_bytes(&desc_bytes).unwrap();
+        let desc = protobuf::descriptor::FileDescriptorSet::parse_from_bytes(&desc_bytes).unwrap();
         let mut files_to_generate = Vec::new();
         'outer: for file in &self.files {
             for include in &self.includes {
