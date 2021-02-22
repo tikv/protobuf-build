@@ -25,8 +25,10 @@ pub struct Builder {
     includes: Vec<String>,
     black_list: Vec<String>,
     out_dir: String,
+    #[cfg(feature = "prost-codec")]
     wrapper_opts: GenOpt,
     package_name: Option<String>,
+    #[cfg(feature = "grpcio-protobuf-codec")]
     re_export_services: bool,
 }
 
@@ -44,8 +46,10 @@ impl Builder {
                 "{}/protos",
                 std::env::var("OUT_DIR").expect("No OUT_DIR defined")
             ),
+            #[cfg(feature = "prost-codec")]
             wrapper_opts: GenOpt::all(),
             package_name: None,
+            #[cfg(feature = "grpcio-protobuf-codec")]
             re_export_services: true,
         }
     }
@@ -59,6 +63,7 @@ impl Builder {
 
     /// This option is only used when generating Prost code. Otherwise, it is
     /// silently ignored.
+    #[cfg(feature = "prost-codec")]
     pub fn wrapper_options(&mut self, wrapper_opts: GenOpt) -> &mut Self {
         self.wrapper_opts = wrapper_opts;
         self
@@ -126,6 +131,7 @@ impl Builder {
 
     /// Whether services defined in separate modules should be re-exported from
     /// their corresponding module. Default is `true`.
+    #[cfg(feature = "grpcio-protobuf-codec")]
     pub fn re_export_services(&mut self, re_export_services: bool) -> &mut Self {
         self.re_export_services = re_export_services;
         self

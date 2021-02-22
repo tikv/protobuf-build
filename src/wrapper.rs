@@ -309,7 +309,9 @@ impl FieldKind {
                                 let value = mnv.lit.clone().into_token_stream().to_string();
                                 // Trim leading and trailing `"` and add prefix.
                                 let value = format!("{}{}", prefix, &value[1..value.len() - 1]);
-                                if mnv.path.is_ident("enumeration") {
+                                if mnv.path.is_ident("bytes") {
+                                    Some(FieldKind::Bytes)
+                                } else if mnv.path.is_ident("enumeration") {
                                     Some(FieldKind::Enumeration(value))
                                 } else if mnv.path.is_ident("oneof") {
                                     Some(FieldKind::OneOf(value))

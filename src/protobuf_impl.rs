@@ -7,6 +7,7 @@ use std::path::Path;
 use std::process::Command;
 use std::str::from_utf8;
 
+use protobuf::Message;
 use regex::Regex;
 
 use crate::Builder;
@@ -79,8 +80,10 @@ impl Builder {
         }
 
         let desc_bytes = std::fs::read(&desc_file).unwrap();
-        let desc: protobuf::descriptor::FileDescriptorSet =
-            protobuf::parse_from_bytes(&desc_bytes).unwrap();
+        let mut desc = protobuf::descriptor::FileDescriptorSet::new();
+        desc.merge_from_bytes(&desc_bytes).unwrap();
+        desc.check_initialized().unwrap();
+
         let mut files_to_generate = Vec::new();
         'outer: for file in &self.files {
             for include in &self.includes {
