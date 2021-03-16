@@ -101,7 +101,7 @@ where
                 .as_ref()
                 .map(|i| (i, &f.ty, FieldKind::from_attrs(&f.attrs, prefix)))
         })
-        .filter_map(|(n, t, k)| k.methods(t, n))
+        .filter_map(|(n, t, (k, deprecated))| k.methods(t, n, deprecated))
         .map(|m| m.write_methods(buf, gen_opt))
         .collect::<Result<Vec<_>, _>>()?;
     writeln!(buf, "}}")?;
@@ -271,8 +271,12 @@ enum FieldKind {
 }
 
 impl FieldKind {
-    fn from_attrs(attrs: &[Attribute], prefix: &str) -> FieldKind {
+    fn from_attrs(attrs: &[Attribute], prefix: &str) -> (FieldKind, bool) {
+        let mut deprecated = false;
+
         for a in attrs {
+            // condition: in prost generated code, `[deprecated]` appears before `[prost(..)]`
+            deprecated = deprecated || a.path.is_ident("deprecated");
             if a.path.is_ident("prost") {
                 if let Ok(Meta::List(list)) = a.parse_meta() {
                     let mut kinds = list
@@ -333,7 +337,7 @@ impl FieldKind {
                         if let FieldKind::Optional(_) = result {
                             result = FieldKind::Optional(Box::new(iter.next().unwrap()));
                         }
-                        return result;
+                        return (result, deprecated);
                     }
                 }
             }
@@ -341,13 +345,13 @@ impl FieldKind {
         unreachable!("Unknown field kind");
     }
 
-    fn methods(&self, ty: &Type, ident: &Ident) -> Option<FieldMethods> {
-        let mut result = FieldMethods::new(ty, ident);
+    fn methods(&self, ty: &Type, ident: &Ident, deprecated: bool) -> Option<FieldMethods> {
+        let mut result = FieldMethods::new(ty, ident, deprecated);
         match self {
             FieldKind::Optional(fk) => {
                 let unwrapped_type = unwrap_type(ty, "Option");
                 let unboxed_type = unwrap_type(&unwrapped_type, "Box");
-                let nested_methods = fk.methods(&unwrapped_type, ident).unwrap();
+                let nested_methods = fk.methods(&unwrapped_type, ident, deprecated).unwrap();
                 let unwrapped_type = unwrapped_type.into_token_stream().to_string();
                 let unboxed_type = unboxed_type.into_token_stream().to_string();
 
@@ -572,10 +576,11 @@ struct FieldMethods {
     get: Option<String>,
     mt: MethodKind,
     take: Option<String>,
+    deprecated: bool,
 }
 
 impl FieldMethods {
-    fn new(ty: &Type, ident: &Ident) -> FieldMethods {
+    fn new(ty: &Type, ident: &Ident, deprecated: bool) -> FieldMethods {
         let mut unesc_base = ident.to_string();
         if unesc_base.starts_with("r#") {
             unesc_base = unesc_base[2..].to_owned();
@@ -593,6 +598,7 @@ impl FieldMethods {
             get: None,
             mt: MethodKind::None,
             take: None,
+            deprecated,
         }
     }
 
@@ -600,12 +606,17 @@ impl FieldMethods {
     where
         W: Write,
     {
+        let deprecated = if self.deprecated {
+            "#[allow(deprecated)] "
+        } else {
+            ""
+        };
         // has_*
         if self.has && gen_opt.contains(GenOpt::HAS) {
             writeln!(
                 buf,
-                "#[inline] pub fn has_{}(&self) -> bool {{ self.{}.is_some() }}",
-                self.unesc_base, self.name
+                "{}#[inline] pub fn has_{}(&self) -> bool {{ self.{}.is_some() }}",
+                deprecated, self.unesc_base, self.name
             )?;
         }
         let ty = match &self.override_ty {
@@ -622,13 +633,13 @@ impl FieldMethods {
             match &self.clear {
                 Some(s) => writeln!(
                     buf,
-                    "#[inline] pub fn clear_{}(&mut self) {{ self.{} = {} }}",
-                    self.unesc_base, self.name, s
+                    "{}#[inline] pub fn clear_{}(&mut self) {{ self.{} = {} }}",
+                    deprecated, self.unesc_base, self.name, s
                 )?,
                 None => writeln!(
                     buf,
-                    "#[inline] pub fn clear_{}(&mut self) {{ self.{}.clear(); }}",
-                    self.unesc_base, self.name
+                    "{}#[inline] pub fn clear_{}(&mut self) {{ self.{}.clear(); }}",
+                    deprecated, self.unesc_base, self.name
                 )?,
             }
         }
@@ -636,13 +647,13 @@ impl FieldMethods {
         match &self.set {
             Some(s) if !self.enum_set => writeln!(
                 buf,
-                "#[inline] pub fn set_{}(&mut self, v: {}) {{ self.{} = {}; }}",
-                self.unesc_base, ty, self.name, s
+                "{}#[inline] pub fn set_{}(&mut self, v: {}) {{ self.{} = {}; }}",
+                deprecated, self.unesc_base, ty, self.name, s
             )?,
             None if gen_opt.contains(GenOpt::TRIVIAL_SET) => writeln!(
                 buf,
-                "#[inline] pub fn set_{}(&mut self, v: {}) {{ self.{} = v; }}",
-                self.unesc_base, ty, self.name
+                "{}#[inline] pub fn set_{}(&mut self, v: {}) {{ self.{} = v; }}",
+                deprecated, self.unesc_base, ty, self.name
             )?,
             _ => {}
         }
@@ -650,8 +661,8 @@ impl FieldMethods {
         match &self.get {
             Some(s) => writeln!(
                 buf,
-                "#[inline] pub fn get_{}(&self) -> {} {{ {} }}",
-                self.unesc_base, ref_ty, s
+                "{}#[inline] pub fn get_{}(&self) -> {} {{ {} }}",
+                deprecated, self.unesc_base, ref_ty, s
             )?,
             None => {
                 if gen_opt.contains(GenOpt::TRIVIAL_GET) {
@@ -661,8 +672,8 @@ impl FieldMethods {
                     };
                     writeln!(
                         buf,
-                        "#[inline] pub fn get_{}(&self) -> {} {{ {}self.{} }}",
-                        self.unesc_base, ref_ty, rf, self.name
+                        "{}#[inline] pub fn get_{}(&self) -> {} {{ {}self.{} }}",
+                        deprecated, self.unesc_base, ref_ty, rf, self.name
                     )?
                 }
             }
@@ -673,15 +684,15 @@ impl FieldMethods {
                 MethodKind::Standard => {
                     writeln!(
                         buf,
-                        "#[inline] pub fn mut_{}(&mut self) -> &mut {} {{ &mut self.{} }}",
-                        self.unesc_base, ty, self.name
+                        "{}#[inline] pub fn mut_{}(&mut self) -> &mut {} {{ &mut self.{} }}",
+                        deprecated, self.unesc_base, ty, self.name
                     )?;
                 }
                 MethodKind::Custom(s) => {
                     writeln!(
                         buf,
-                        "#[inline] pub fn mut_{}(&mut self) -> &mut {} {{ {} }} ",
-                        self.unesc_base, ty, s
+                        "{}#[inline] pub fn mut_{}(&mut self) -> &mut {} {{ {} }} ",
+                        deprecated, self.unesc_base, ty, s
                     )?;
                 }
                 MethodKind::None => {}
@@ -693,8 +704,8 @@ impl FieldMethods {
             if let Some(s) = &self.take {
                 writeln!(
                     buf,
-                    "#[inline] pub fn take_{}(&mut self) -> {} {{ {} }}",
-                    self.unesc_base, ty, s
+                    "{}#[inline] pub fn take_{}(&mut self) -> {} {{ {} }}",
+                    deprecated, self.unesc_base, ty, s
                 )?;
             }
         }
