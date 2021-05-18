@@ -105,7 +105,8 @@ impl Builder {
             &Path::new(&self.out_dir),
             &protobuf_codegen::Customize {
                 carllerche_bytes_for_bytes: Some(true),
-                carllerche_bytes_for_string: Some(true),
+                // TODO: unify string for prost and protobuf.
+                carllerche_bytes_for_string: None,
                 ..Default::default()
             },
         )
