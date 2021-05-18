@@ -15,7 +15,6 @@ impl Builder {
         #[cfg(not(feature = "grpcio-prost-codec"))]
         {
             prost_build::Config::new()
-                .bytes(&["."])
                 .out_dir(&self.out_dir)
                 .compile_protos(&self.files, &self.includes)
                 .unwrap();

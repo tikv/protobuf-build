@@ -103,12 +103,7 @@ impl Builder {
             desc.get_file(),
             &files_to_generate,
             &Path::new(&self.out_dir),
-            &protobuf_codegen::Customize {
-                carllerche_bytes_for_bytes: Some(true),
-                // TODO: unify string for prost and protobuf.
-                carllerche_bytes_for_string: None,
-                ..Default::default()
-            },
+            &protobuf_codegen::Customize::default(),
         )
         .unwrap();
         self.generate_grpcio(&desc.get_file(), &files_to_generate);
