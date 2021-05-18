@@ -499,7 +499,7 @@ impl FieldKind {
                 result.ref_ty = RefType::Deref("[u8]".to_owned());
                 result.mt = MethodKind::Standard;
                 result.take = Some(format!(
-                    "::std::mem::replace(&mut self.{}, ::std::vec::Vec::new())",
+                    "::std::mem::replace(&mut self.{}, Default::default())",
                     result.name
                 ));
             }
@@ -507,7 +507,7 @@ impl FieldKind {
                 result.ref_ty = RefType::Deref("str".to_owned());
                 result.mt = MethodKind::Standard;
                 result.take = Some(format!(
-                    "::std::mem::replace(&mut self.{}, ::std::string::String::new())",
+                    "::std::mem::replace(&mut self.{}, Default::default())",
                     result.name
                 ));
             }

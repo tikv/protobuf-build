@@ -1,6 +1,6 @@
 [package]
 name = "protobuf-build"
-version = "0.12.1"
+version = "0.12.2"
 authors = ["Nick Cameron <nrc@ncameron.org>"]
 edition = "2018"
 license = "Apache-2.0"
@@ -10,7 +10,7 @@ description = "Utility functions for generating Rust code from protobufs (using 
 
 [features]
 default = ["protobuf-codec"]
-protobuf-codec = ["protobuf-codegen", "protobuf", "regex"]
+protobuf-codec = ["protobuf-codegen", "protobuf/with-bytes", "regex"]
 grpcio-protobuf-codec = ["grpcio-compiler/protobuf-codec", "protobuf-codec"]
 prost-codec = ["syn", "quote", "prost-build", "proc-macro2"]
 grpcio-prost-codec = ["grpcio-compiler/prost-codec", "prost-codec"]
