@@ -15,6 +15,7 @@ mod protobuf_impl;
 mod prost_impl;
 
 use bitflags::bitflags;
+use std::env::var;
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::Write;
@@ -42,16 +43,19 @@ impl Builder {
                 "google".to_owned(),
                 "gogoproto".to_owned(),
             ],
-            out_dir: format!(
-                "{}/protos",
-                std::env::var("OUT_DIR").expect("No OUT_DIR defined")
-            ),
+            out_dir: format!("{}/protos", var("OUT_DIR").expect("No OUT_DIR defined")),
             #[cfg(feature = "prost-codec")]
             wrapper_opts: GenOpt::all(),
             package_name: None,
             #[cfg(feature = "grpcio-protobuf-codec")]
             re_export_services: true,
         }
+    }
+
+    pub fn include_google_protos(&mut self) -> &mut Self {
+        let path = format!("{}/include", std::env!("CARGO_MANIFEST_DIR"));
+        self.includes.push(path);
+        self
     }
 
     pub fn generate(&self) {
