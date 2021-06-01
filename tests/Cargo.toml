@@ -11,7 +11,7 @@ protobuf-codec = ["protobuf-build/grpcio-protobuf-codec"]
 prost-codec = ["protobuf-build/grpcio-prost-codec"]
 
 [dependencies]
-protobuf = "2"
+protobuf = "2.8"
 prost = "0.7"
 prost-derive = "0.7"
 lazy_static = "1.4"
