@@ -32,4 +32,4 @@ jobs:
     - run: cargo test --all -- --nocapture
     - run: cargo test --no-default-features --features prost-codec --all -- --nocapture
     - run: cargo test --no-default-features --features grpcio-protobuf-codec --all -- --nocapture
-    - run: cargo test --no-default-features --features grpcio-prost-codec --all -- --nocapture
+    - run: cargo test --no-default-features --features grpcio-prost-codec --all
