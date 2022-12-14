@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+    - run: sudo apt-get install protobuf-compiler
     - run: rustup component add rustfmt clippy
     - run: which cargo && cargo version
     - run: cargo fmt -- --check
@@ -27,6 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+    - run: sudo apt-get install protobuf-compiler
     - run: rustup default nightly
     - run: which cargo && cargo version
     - run: cargo test --all -- --nocapture
