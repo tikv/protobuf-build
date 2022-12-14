@@ -20,7 +20,9 @@ impl Builder {
                 .unwrap();
         }
 
-        let rs_files_snapshot = self.list_rs_files().collect::<Vec<_>>;
-        rs_files_snapshot.for_each(|path| WrapperGen::new(path, self.wrapper_opts).write());
+        let rs_files_snapshot = self.list_rs_files().collect::<Vec<_>>();
+        rs_files_snapshot
+            .into_iter()
+            .for_each(|path| WrapperGen::new(path, self.wrapper_opts).write());
     }
 }
