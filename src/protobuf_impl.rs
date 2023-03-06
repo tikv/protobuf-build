@@ -41,7 +41,7 @@ fn get_protoc() -> String {
 }
 
 fn check_protoc_version(protoc: &str) -> Result<String, ()> {
-    let ver_re = Regex::new(r"([0-9]+)\.([0-9]+)\.[0-9]").unwrap();
+    let ver_re = Regex::new(r"([0-9]+)\.([0-9]+)(\.[0-9])?").unwrap();
     let output = Command::new(protoc).arg("--version").output();
     match output {
         Ok(o) => {
