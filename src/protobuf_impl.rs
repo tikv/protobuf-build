@@ -1,50 +1,15 @@
 // Copyright 2019 PingCAP, Inc.
 
-use std::env;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::Command;
-use std::str::from_utf8;
 
 use protobuf::Message;
 use regex::Regex;
 
+use crate::get_protoc;
 use crate::Builder;
-
-// We use system protoc when its version matches,
-// otherwise use the protoc from bin which we bundle with the crate.
-fn get_protoc() -> String {
-    // $PROTOC overrides everything; if it isn't a useful version then fail.
-    if let Ok(s) = env::var("PROTOC") {
-        check_protoc_version(&s).expect("PROTOC version not usable");
-        return s;
-    }
-    if let Ok(s) = check_protoc_version("protoc") {
-        return s;
-    }
-    // The bundled protoc should always match the version
-    protobuf_src::protoc().display().to_string()
-}
-
-fn check_protoc_version(protoc: &str) -> Result<String, ()> {
-    let ver_re = Regex::new(r"([0-9]+)\.([0-9]+)(\.[0-9])?").unwrap();
-    let output = Command::new(protoc).arg("--version").output();
-    match output {
-        Ok(o) => {
-            let caps = ver_re.captures(from_utf8(&o.stdout).unwrap()).unwrap();
-            let major = caps.get(1).unwrap().as_str().parse::<i16>().unwrap();
-            let minor = caps.get(2).unwrap().as_str().parse::<i16>().unwrap();
-            if (major == 3 && minor >= 1) || (major >= 20) {
-                return Ok(protoc.to_owned());
-            }
-            println!("The system `protoc` version mismatch, require >= 3.1.0 or >= 20.x, got {}.{}.x, fallback to the bundled `protoc`", major, minor);
-        }
-        Err(_) => println!("`protoc` not in PATH, try using the bundled protoc"),
-    };
-
-    Err(())
-}
 
 impl Builder {
     pub fn generate_files(&self) {

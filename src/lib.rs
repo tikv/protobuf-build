@@ -15,11 +15,48 @@ mod protobuf_impl;
 mod prost_impl;
 
 use bitflags::bitflags;
+use regex::Regex;
 use std::env::var;
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::str::from_utf8;
+
+// We use system protoc when its version matches,
+// otherwise use the protoc from bin which we bundle with the crate.
+pub(crate) fn get_protoc() -> String {
+    // $PROTOC overrides everything; if it isn't a useful version then fail.
+    if let Ok(s) = var("PROTOC") {
+        check_protoc_version(&s).expect("PROTOC version not usable");
+        return s;
+    }
+    if let Ok(s) = check_protoc_version("protoc") {
+        return s;
+    }
+    // The bundled protoc should always match the version
+    protobuf_src::protoc().display().to_string()
+}
+
+fn check_protoc_version(protoc: &str) -> Result<String, ()> {
+    let ver_re = Regex::new(r"([0-9]+)\.([0-9]+)(\.[0-9])?").unwrap();
+    let output = Command::new(protoc).arg("--version").output();
+    match output {
+        Ok(o) => {
+            let caps = ver_re.captures(from_utf8(&o.stdout).unwrap()).unwrap();
+            let major = caps.get(1).unwrap().as_str().parse::<i16>().unwrap();
+            let minor = caps.get(2).unwrap().as_str().parse::<i16>().unwrap();
+            if (major == 3 && minor >= 1) || (major >= 20) {
+                return Ok(protoc.to_owned());
+            }
+            println!("The system `protoc` version mismatch, require >= 3.1.0 or >= 20.x, got {}.{}.x, fallback to the bundled `protoc`", major, minor);
+        }
+        Err(_) => println!("`protoc` not in PATH, try using the bundled protoc"),
+    };
+
+    Err(())
+}
 
 pub struct Builder {
     files: Vec<String>,
