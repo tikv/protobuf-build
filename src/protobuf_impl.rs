@@ -23,21 +23,8 @@ fn get_protoc() -> String {
     if let Ok(s) = check_protoc_version("protoc") {
         return s;
     }
-
     // The bundled protoc should always match the version
-    let protoc_bin_name = match (env::consts::OS, env::consts::ARCH) {
-        ("linux", "x86") => "protoc-linux-x86_32",
-        ("linux", "x86_64") => "protoc-linux-x86_64",
-        ("linux", "aarch64") => "protoc-linux-aarch_64",
-        ("linux", "powerpc64") => "protoc-linux-ppcle_64",
-        ("macos", "x86_64") => "protoc-osx-x86_64",
-        ("windows", _) => "protoc-win32.exe",
-        _ => panic!("No suitable `protoc` (>= 3.1.0) found in PATH"),
-    };
-    let bin_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("bin")
-        .join(protoc_bin_name);
-    bin_path.display().to_string()
+    protobuf_src::protoc().display().to_string()
 }
 
 fn check_protoc_version(protoc: &str) -> Result<String, ()> {
