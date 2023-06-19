@@ -35,10 +35,10 @@ fn check_protoc_version(protoc: &str) -> Result<String, ()> {
             let caps = ver_re.captures(from_utf8(&o.stdout).unwrap()).unwrap();
             let major = caps.get(1).unwrap().as_str().parse::<i16>().unwrap();
             let minor = caps.get(2).unwrap().as_str().parse::<i16>().unwrap();
-            if major == 3 && minor >= 1 {
+            if (major == 3 && minor >= 1) || (major >= 20) {
                 return Ok(protoc.to_owned());
             }
-            println!("The system `protoc` version mismatch, require >= 3.1.0, got {}.{}.x, fallback to the bundled `protoc`", major, minor);
+            println!("The system `protoc` version mismatch, require >= 3.1.0 or >= 20.x, got {}.{}.x, fallback to the bundled `protoc`", major, minor);
         }
         Err(_) => println!("`protoc` not in PATH, try using the bundled protoc"),
     };
