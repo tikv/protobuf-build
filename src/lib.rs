@@ -16,6 +16,7 @@ mod prost_impl;
 
 use bitflags::bitflags;
 use regex::Regex;
+use std::env;
 use std::env::var;
 use std::fmt::Write as _;
 use std::fs::{self, File};
@@ -26,7 +27,7 @@ use std::str::from_utf8;
 
 // We use system protoc when its version matches,
 // otherwise use the protoc from bin which we bundle with the crate.
-pub(crate) fn get_protoc() -> String {
+fn get_protoc() -> String {
     // $PROTOC overrides everything; if it isn't a useful version then fail.
     if let Ok(s) = var("PROTOC") {
         check_protoc_version(&s).expect("PROTOC version not usable");
@@ -36,7 +37,20 @@ pub(crate) fn get_protoc() -> String {
         return s;
     }
     // The bundled protoc should always match the version
-    protobuf_src::protoc().display().to_string()
+    let protoc_bin_name = match (env::consts::OS, env::consts::ARCH) {
+        ("linux", "x86") => "protoc-linux-x86_32",
+        ("linux", "x86_64") => "protoc-linux-x86_64",
+        ("linux", "aarch64") => "protoc-linux-aarch_64",
+        ("linux", "powerpc64") => "protoc-linux-ppcle_64",
+        ("macos", "x86_64") => "protoc-osx-x86_64",
+        ("macos", "aarch64") => "protoc-osx-aarch_64",
+        ("windows", _) => "protoc-win32.exe",
+        _ => panic!("No suitable `protoc` (>= 3.1.0) found in PATH"),
+    };
+    let bin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("bin")
+        .join(protoc_bin_name);
+    bin_path.display().to_string()
 }
 
 fn check_protoc_version(protoc: &str) -> Result<String, ()> {
@@ -47,10 +61,10 @@ fn check_protoc_version(protoc: &str) -> Result<String, ()> {
             let caps = ver_re.captures(from_utf8(&o.stdout).unwrap()).unwrap();
             let major = caps.get(1).unwrap().as_str().parse::<i16>().unwrap();
             let minor = caps.get(2).unwrap().as_str().parse::<i16>().unwrap();
-            if (major == 3 && minor >= 1) || (major >= 20) {
+            if (major, minor) >= (3, 1) {
                 return Ok(protoc.to_owned());
             }
-            println!("The system `protoc` version mismatch, require >= 3.1.0 or >= 20.x, got {}.{}.x, fallback to the bundled `protoc`", major, minor);
+            println!("The system `protoc` version mismatch, require >= 3.1.0, got {}.{}.x, fallback to the bundled `protoc`", major, minor);
         }
         Err(_) => println!("`protoc` not in PATH, try using the bundled protoc"),
     };
@@ -90,7 +104,7 @@ impl Builder {
     }
 
     pub fn include_google_protos(&mut self) -> &mut Self {
-        let path = format!("{}/include", std::env!("CARGO_MANIFEST_DIR"));
+        let path = format!("{}/include", env!("CARGO_MANIFEST_DIR"));
         self.includes.push(path);
         self
     }

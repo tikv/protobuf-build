@@ -19,7 +19,6 @@ grpcio-prost-codec = ["grpcio-compiler/prost-codec", "prost-codec"]
 proc-macro2 = { version = "1", optional = true }
 protobuf = { version = "2", optional = true }
 protobuf-codegen = { version = "2", optional = true }
-protobuf-src = "1.1.0"
 grpcio-compiler = { version = ">=0.8", default-features = false, optional = true }
 prost-build = { version = "0.11", optional = true }
 regex = { version = "1.3" }
