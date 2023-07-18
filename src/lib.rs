@@ -39,16 +39,15 @@ fn get_protoc() -> String {
     }
 
     // The bundled protoc should always match the version
-    if let Some(protoc_bin_name) = match (env::consts::OS, env::consts::ARCH) {
-        ("windows", _) => Some("protoc-win32.exe"),
-        _ => None,
-    } {
+    #[cfg(windows)]
+    {
         let bin_path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("bin")
-            .join(protoc_bin_name);
-        return bin_path.display().to_string();
+            .join("protoc-win32.exe");
+        bin_path.display().to_string()
     }
 
+    #[cfg(not(windows))]
     protobuf_src::protoc().display().to_string()
 }
 
