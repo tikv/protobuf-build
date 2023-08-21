@@ -55,7 +55,10 @@ impl Builder {
             desc.get_file(),
             &files_to_generate,
             Path::new(&self.out_dir),
-            &protobuf_codegen::Customize::default(),
+            &protobuf_codegen::Customize {
+                serde_derive: Some(true),
+                ..Default::default()
+            },
         )
         .unwrap();
         self.generate_grpcio(desc.get_file(), &files_to_generate);
