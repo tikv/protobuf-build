@@ -7,8 +7,8 @@ use std::path::PathBuf;
 use proc_macro2::Span;
 use quote::ToTokens;
 use syn::{
-    Attribute, GenericArgument, Ident, Item, ItemEnum, ItemStruct, Meta, NestedMeta, PathArguments,
-    Token, Type, TypePath,
+    Attribute, GenericArgument, Ident, Item, ItemEnum, ItemStruct, Meta, PathArguments, Token,
+    Type, TypePath,
 };
 
 use crate::GenOpt;
@@ -276,8 +276,8 @@ impl FieldKind {
 
         for a in attrs {
             // condition: in prost generated code, `[deprecated]` appears before `[prost(..)]`
-            deprecated = deprecated || a.path.is_ident("deprecated");
-            if a.path.is_ident("prost") {
+            deprecated = deprecated || a.path().is_ident("deprecated");
+            if a.path().is_ident("prost") {
                 if let Ok(Meta::List(list)) = a.parse_meta() {
                     let mut kinds = list
                         .nested
@@ -310,7 +310,7 @@ impl FieldKind {
                                     None
                                 }
                             } else if let NestedMeta::Meta(Meta::NameValue(mnv)) = item {
-                                let value = mnv.lit.clone().into_token_stream().to_string();
+                                let value = mnv.clone().into_token_stream().to_string();
                                 // Trim leading and trailing `"` and add prefix.
                                 let value = format!("{}{}", prefix, &value[1..value.len() - 1]);
                                 if mnv.path.is_ident("bytes") {
@@ -728,8 +728,8 @@ enum MethodKind {
 
 fn is_message(attrs: &[Attribute]) -> bool {
     for a in attrs {
-        if a.path.is_ident("derive") {
-            let tts = a.tokens.to_string();
+        if a.path().is_ident("derive") {
+            let tts = a.to_token_stream().to_string();
             if tts.contains(":: Message") {
                 return true;
             }
@@ -740,8 +740,8 @@ fn is_message(attrs: &[Attribute]) -> bool {
 
 fn is_enum(attrs: &[Attribute]) -> bool {
     for a in attrs {
-        if a.path.is_ident("derive") {
-            let tts = a.tokens.to_string();
+        if a.path().is_ident("derive") {
+            let tts = a.to_token_stream().to_string();
             if tts.contains("Enumeration") {
                 return true;
             }
