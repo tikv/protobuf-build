@@ -757,7 +757,7 @@ fn type_in_expr_context(s: &str) -> String {
     let last_segment = parsed.path.segments.last_mut().unwrap();
     if !last_segment.arguments.is_empty() {
         if let PathArguments::AngleBracketed(ref mut a) = last_segment.arguments {
-            if a.colon2_token == None {
+            if a.colon2_token.is_none() {
                 a.colon2_token = Some(Token![::](Span::call_site()));
             }
         }
