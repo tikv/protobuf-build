@@ -51,13 +51,28 @@ impl Builder {
             );
         }
 
-        protobuf_codegen::gen_and_write(
-            desc.get_file(),
-            &files_to_generate,
-            Path::new(&self.out_dir),
-            &protobuf_codegen::Customize::default(),
-        )
-        .unwrap();
+        if let Some(gen) = &self.customize_protobuf_gen {
+            let results = gen(
+                desc.get_file(),
+                &files_to_generate,
+                &protobuf_codegen::Customize::default(),
+            );
+            for r in &results {
+                let mut file_path = Path::new(&self.out_dir).to_owned();
+                file_path.push(&r.name);
+                let mut file_writer = File::create(&file_path).unwrap();
+                file_writer.write_all(&r.content).unwrap();
+                file_writer.flush().unwrap();
+            }
+        } else {
+            protobuf_codegen::gen_and_write(
+                desc.get_file(),
+                &files_to_generate,
+                Path::new(&self.out_dir),
+                &protobuf_codegen::Customize::default(),
+            )
+            .unwrap();
+        }
         self.generate_grpcio(desc.get_file(), &files_to_generate);
         self.import_grpcio();
         self.replace_read_unknown_fields();
