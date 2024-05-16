@@ -70,6 +70,14 @@ fn check_protoc_version(protoc: &str) -> Result<String, ()> {
     Err(())
 }
 
+type ProtobufGen = Box<
+    dyn Fn(
+        &[protobuf::descriptor::FileDescriptorProto],
+        &[String],
+        &protobuf_codegen::Customize,
+    ) -> Vec<protobuf::compiler_plugin::GenResult>,
+>;
+
 pub struct Builder {
     files: Vec<String>,
     includes: Vec<String>,
@@ -80,6 +88,7 @@ pub struct Builder {
     package_name: Option<String>,
     #[cfg(feature = "grpcio-protobuf-codec")]
     re_export_services: bool,
+    customize_protobuf_gen: Option<ProtobufGen>,
 }
 
 impl Builder {
@@ -98,7 +107,13 @@ impl Builder {
             package_name: None,
             #[cfg(feature = "grpcio-protobuf-codec")]
             re_export_services: true,
+            customize_protobuf_gen: None,
         }
+    }
+
+    pub fn customize_protobuf_gen(&mut self, gen: ProtobufGen) -> &mut Self {
+        self.customize_protobuf_gen = Some(gen);
+        self
     }
 
     pub fn include_google_protos(&mut self) -> &mut Self {
