@@ -135,6 +135,12 @@ impl Builder {
                 }
             })
             .collect();
+        // `read_dir` yields entries in filesystem-inode order, which makes
+        // the proto file list non-deterministic across hosts and even
+        // across runs on the same host. Sort so the order protoc /
+        // prost_build sees is stable; this is required for reproducible
+        // builds of the resulting `FileDescriptorProto` layout.
+        self.files.sort();
         self
     }
 
@@ -246,9 +252,16 @@ impl Builder {
         fs::create_dir_all(&self.out_dir).unwrap();
     }
 
-    // List all `.rs` files in `self.out_dir`.
+    // List all `.rs` files in `self.out_dir`, sorted by path.
+    //
+    // Sorting matters because `generate_mod_file` consumes this iterator
+    // to write `pub mod foo; include!("foo.rs");` statements into
+    // `mod.rs`. `read_dir` returns entries in filesystem-inode order, so
+    // without sorting the mod declarations — and therefore the rustc
+    // compile/link order and the offsets of per-module statics in
+    // `.rodata` — would vary across builds.
     fn list_rs_files(&self) -> impl Iterator<Item = PathBuf> {
-        fs::read_dir(&self.out_dir)
+        let mut files: Vec<PathBuf> = fs::read_dir(&self.out_dir)
             .expect("Couldn't read directory")
             .filter_map(|e| {
                 let path = e.expect("Couldn't list file").path();
@@ -258,6 +271,9 @@ impl Builder {
                     None
                 }
             })
+            .collect();
+        files.sort();
+        files.into_iter()
     }
 }
 
