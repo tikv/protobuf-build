@@ -47,8 +47,15 @@ fn get_protoc() -> String {
         bin_path.display().to_string()
     }
 
-    #[cfg(not(windows))]
-    protobuf_src::protoc().display().to_string()
+    #[cfg(all(not(windows), feature = "with-protobuf-src"))]
+    {
+        protobuf_src::protoc().display().to_string()
+    }
+
+    #[cfg(all(not(windows), not(feature = "with-protobuf-src")))]
+    {
+        panic!("No usable protoc found. Set PROTOC or enable feature `with-protobuf-src`.")
+    }
 }
 
 fn check_protoc_version(protoc: &str) -> Result<String, ()> {
@@ -104,6 +111,10 @@ impl Builder {
     pub fn include_google_protos(&mut self) -> &mut Self {
         let path = format!("{}/include", env!("CARGO_MANIFEST_DIR"));
         self.includes.push(path);
+        // Add additional optional includes to accomodate build tools such as Bazel
+        if let Ok(path) = var("PROTOBUF_INCLUDE_DIR") {
+            self.includes.push(path);
+        }
         self
     }
 
