@@ -1,0 +1,13 @@
+syntax = "proto2";
+package compat;
+
+enum Status {
+    UNKNOWN = 0;
+    READY = 1;
+}
+
+message Record {
+    optional Status status = 1;
+    required Status required_status = 2;
+    optional bytes payload = 3;
+}
