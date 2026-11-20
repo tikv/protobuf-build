@@ -21,3 +21,6 @@ Utility functions for generating Rust code from protobuf specifications.
 
 Can use [rust-protobuf](https://github.com/stepancheg/rust-protobuf) and
 [Prost](https://github.com/danburkert/prost).
+
+The `prost-codec` feature uses Prost 0.14 and requires Rust 1.85 or later.
+The `grpcio-prost-codec` feature uses the generator from `grpcio-compiler` and still targets Prost 0.11.

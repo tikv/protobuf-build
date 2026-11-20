@@ -7,13 +7,15 @@ publish = false
 build = "build.rs"
 
 [features]
-protobuf-codec = ["protobuf-build/grpcio-protobuf-codec"]
-prost-codec = ["protobuf-build/grpcio-prost-codec"]
+protobuf-codec = ["protobuf-build/protobuf-codec"]
+prost-codec = ["protobuf-build/prost-codec", "dep:prost-current"]
+grpcio-protobuf-codec = ["protobuf-codec", "protobuf-build/grpcio-protobuf-codec"]
+grpcio-prost-codec = ["protobuf-build/grpcio-prost-codec", "dep:prost-legacy"]
 
 [dependencies]
 protobuf = "2"
-prost = "0.11"
-prost-derive = "0.11"
+prost-current = { package = "prost", version = "0.14", optional = true }
+prost-legacy = { package = "prost", version = "0.11", optional = true }
 lazy_static = "1.4"
 
 [build-dependencies]
