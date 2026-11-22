@@ -24,3 +24,8 @@ Can use [rust-protobuf](https://github.com/stepancheg/rust-protobuf) and
 
 The `prost-codec` feature uses Prost 0.14 and requires Rust 1.85 or later.
 The `grpcio-prost-codec` feature uses the generator from `grpcio-compiler` and still targets Prost 0.11.
+
+Do not enable `prost-codec` and `grpcio-prost-codec` in the same build.
+Cargo merges features across the dependency graph. If one crate enables `grpcio-prost-codec`, all
+crates use the Prost 0.11 generator. Their enum accessors then call the deprecated `from_i32`, and
+builds that deny warnings fail.
