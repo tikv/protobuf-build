@@ -117,6 +117,9 @@ where
 {
     writeln!(buf, "impl {}{} {{", prefix, item.ident)?;
     writeln!(buf, "pub fn values() -> &'static [Self] {{")?;
+    // The slice lists every variant, including deprecated ones. Allow the use
+    // here so that only application code reports deprecated variants.
+    writeln!(buf, "#[allow(deprecated)]")?;
     writeln!(
         buf,
         "static VALUES: &'static [{}{}] = &[",

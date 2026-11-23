@@ -4,6 +4,7 @@ package compat;
 enum Status {
     UNKNOWN = 0;
     READY = 1;
+    RETIRED = 2 [deprecated = true];
 }
 
 message Record {
