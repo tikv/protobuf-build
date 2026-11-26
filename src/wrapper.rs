@@ -117,6 +117,9 @@ where
 {
     writeln!(buf, "impl {}{} {{", prefix, item.ident)?;
     writeln!(buf, "pub fn values() -> &'static [Self] {{")?;
+    // The slice lists every variant, including deprecated ones. Allow the use
+    // here so that only application code reports deprecated variants.
+    writeln!(buf, "#[allow(deprecated)]")?;
     writeln!(
         buf,
         "static VALUES: &'static [{}{}] = &[",
@@ -419,14 +422,14 @@ impl FieldKind {
                 result.get = Some(match &**fk {
                     FieldKind::Enumeration(t) => format!(
                         "match self.{} {{
-                            Some(v) => match {}::from_i32(v) {{\
+                            Some(v) => match {} {{\
                                 Some(e) => e,
                                 None => panic!(\"Unknown enum variant: {{}}\", v),
                             }},
                             None => {}::default(),
                         }}",
                         result.name,
-                        type_in_expr_context(t),
+                        enum_from_i32(t, "v"),
                         t,
                     ),
                     _ => format!(
@@ -518,11 +521,11 @@ impl FieldKind {
                 result.set = Some("v as i32".to_owned());
                 result.enum_set = true;
                 result.get = Some(format!(
-                    "match {}::from_i32(self.{}) {{\
+                    "match {} {{\
                         Some(e) => e,
                         None => panic!(\"Unknown enum variant: {{}}\", self.{1}),
                     }}",
-                    type_in_expr_context(enum_type),
+                    enum_from_i32(enum_type, &format!("self.{}", result.name)),
                     result.name,
                 ));
             }
@@ -750,6 +753,19 @@ fn is_enum(attrs: &[Attribute]) -> bool {
     false
 }
 
+fn enum_from_i32(enum_type: &str, value: &str) -> String {
+    let enum_type = type_in_expr_context(enum_type);
+    // grpcio-compiler still generates code for Prost 0.11.
+    if cfg!(feature = "grpcio-prost-codec") {
+        format!("{}::from_i32({})", enum_type, value)
+    } else {
+        format!(
+            "<{} as ::std::convert::TryFrom<i32>>::try_from({}).ok()",
+            enum_type, value
+        )
+    }
+}
+
 // When a generic type is used in expression context, it might need to be adjusted.
 // For example, `Box<Foo>` becomes `Box::<Foo>`
 fn type_in_expr_context(s: &str) -> String {
@@ -757,7 +773,7 @@ fn type_in_expr_context(s: &str) -> String {
     let last_segment = parsed.path.segments.last_mut().unwrap();
     if !last_segment.arguments.is_empty() {
         if let PathArguments::AngleBracketed(ref mut a) = last_segment.arguments {
-            if a.colon2_token == None {
+            if a.colon2_token.is_none() {
                 a.colon2_token = Some(Token![::](Span::call_site()));
             }
         }

@@ -18,9 +18,15 @@ jobs:
     - run: cargo fmt -- --check
     - run: cargo clippy --all
     - run: cargo test --all -- --nocapture
-    - run: cargo test --no-default-features --features prost-codec --all -- --nocapture
-    - run: cargo test --no-default-features --features grpcio-protobuf-codec --all -- --nocapture
-    - run: cargo test --no-default-features --features grpcio-prost-codec --all -- --nocapture
+    - run: >-
+        cargo test --no-default-features
+        --features prost-codec,tests/prost-codec --all -- --nocapture
+    - run: >-
+        cargo test --no-default-features
+        --features grpcio-protobuf-codec,tests/grpcio-protobuf-codec --all -- --nocapture
+    - run: >-
+        cargo test --no-default-features
+        --features grpcio-prost-codec,tests/grpcio-prost-codec --all -- --nocapture
 
   Linux-Nightly:
     name: Linux-Nightly
@@ -30,6 +36,12 @@ jobs:
     - run: rustup default nightly
     - run: which cargo && cargo version
     - run: cargo test --all -- --nocapture
-    - run: cargo test --no-default-features --features prost-codec --all -- --nocapture
-    - run: cargo test --no-default-features --features grpcio-protobuf-codec --all -- --nocapture
-    - run: cargo test --no-default-features --features grpcio-prost-codec --all -- --nocapture
+    - run: >-
+        cargo test --no-default-features
+        --features prost-codec,tests/prost-codec --all -- --nocapture
+    - run: >-
+        cargo test --no-default-features
+        --features grpcio-protobuf-codec,tests/grpcio-protobuf-codec --all -- --nocapture
+    - run: >-
+        cargo test --no-default-features
+        --features grpcio-prost-codec,tests/grpcio-prost-codec --all -- --nocapture
